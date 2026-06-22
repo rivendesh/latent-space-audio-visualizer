@@ -11,7 +11,7 @@ import librosa
 from audio_processor import load_audio, compute_waveform_peaks
 from latent_encoder import LatentEncoder
 from realtime_component import build_realtime_component
-from realtime_3d import build_3d_component
+from realtime_3d import build_3d_component, build_profile_component
 
 
 # ---------- CLI args: support --file / -f and AUDIO_FILE env var ----------
@@ -365,4 +365,14 @@ with tab3:
         rms=pb_rms,
         is_dark=is_dark,
     )
-    st.components.v1.html(html_3d, height=800)
+    st.components.v1.html(html_3d, height=620)
+    html_prof = build_profile_component(
+        audio=pb_audio,
+        sr=sr,
+        latent_points=pb_latent,
+        latent_times=pb_times,
+        centroids=pb_centroids,
+        rms=pb_rms,
+        is_dark=is_dark,
+    )
+    st.components.v1.html(html_prof, height=200)
