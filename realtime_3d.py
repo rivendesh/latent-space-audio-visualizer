@@ -13,6 +13,8 @@ def build_3d_component(audio, sr, latent_points, latent_times, centroids, rms, w
 
     centroid_min = float(centroids.min())
     centroid_max = float(centroids.max())
+    centroid_mean = float(centroids.mean())
+    centroid_std = float(centroids.std())
     rms_min = float(rms.min())
     rms_max = float(rms.max())
 
@@ -36,6 +38,8 @@ def build_3d_component(audio, sr, latent_points, latent_times, centroids, rms, w
         "centroid_max": centroid_max,
         "rms_min": rms_min,
         "rms_max": rms_max,
+        "centroid_mean": centroid_mean,
+        "centroid_std": centroid_std,
         "duration": float(len(audio) / sr),
         "audio_b64": audio_b64,
         "sr": sr,
@@ -391,7 +395,7 @@ controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.autoRotate = true;
 controls.autoRotateSpeed = 0.1;
-controls.target.set(0, 0, 0.5);
+controls.target.set(0, 0, 0);
 controls.update();
 
 // Data group for time-axis stretching
@@ -442,16 +446,31 @@ function centroidColor(t) {
 
 const points3d = DATA.points_3d;
 const centroids = DATA.centroids;
-const centroidMin = DATA.centroid_min;
-const centroidRange = DATA.centroid_max - DATA.centroid_min || 1;
+const centroidMean = DATA.centroid_mean;
+const centroidStd = DATA.centroid_std || 1;
 const n = points3d.length;
+
+// Prefix sums for O(1) running midpoint of drawn segment
+const prefX = new Array(n);
+const prefY = new Array(n);
+const prefZ = new Array(n);
+let sx = 0, sy = 0, sz = 0;
+for (let i = 0; i < n; i++) {
+  sx += points3d[i][0];
+  sy += points3d[i][1];
+  sz += points3d[i][2];
+  prefX[i] = sx;
+  prefY[i] = sy;
+  prefZ[i] = sz;
+}
 
 // Pre-fill geometry arrays
 const posArr = new Float32Array(n * 3);
 const colArr = new Float32Array(n * 3);
 for (let i = 0; i < n; i++) {
   const p = points3d[i];
-  const cf = (centroids[i] - centroidMin) / centroidRange;
+  const z = (centroids[i] - centroidMean) / centroidStd;
+  const cf = Math.max(0, Math.min(1, 0.5 + z / 6));
   const [r, g, b] = centroidColor(cf);
   posArr[i*3] = p[0];
   posArr[i*3+1] = p[1];
@@ -753,11 +772,12 @@ function drawProfile(t) {
 
   var n = DATA.centroids.length;
 
-  // all data points, coloured by centroid
+  // all data points, coloured by distance from centroid mean
   for (var i = 0; i < n; i++) {
     var cx = toX(DATA.centroids[i]);
     var cy = toY(DATA.rms[i]);
-    var cf = (DATA.centroids[i] - cMin) / cRange;
+    var z = (DATA.centroids[i] - DATA.centroid_mean) / (DATA.centroid_std || 1);
+    var cf = Math.max(0, Math.min(1, 0.5 + z / 6));
     var col = centroidColor(cf);
     ctx.beginPath();
     ctx.arc(cx, cy, 2, 0, Math.PI*2);
@@ -878,12 +898,6 @@ function seek(time) {
 function animate() {
   const t = isPlaying ? Math.min(getCurrentTime(), DATA.duration) : pausedAt;
 
-  // Stop the loop when track ends
-  if (t >= DATA.duration && !isPlaying && pausedAt >= DATA.duration) {
-    animId = null;
-    return;
-  }
-
   const progress = Math.min(Math.max(t / DATA.duration, 0), 1);
   const drawCount = Math.min(Math.floor(progress * n), n);
 
@@ -894,6 +908,16 @@ function animate() {
   // Update trajectory line
   lineGeo.setDrawRange(0, Math.max(0, drawCount - 1));
 
+  // Track running midpoint of the drawn segment so the camera
+  // smoothly pans toward the centre of the revealed points.
+  if (drawCount > 0) {
+    const mX = prefX[drawCount - 1] / drawCount;
+    const mY = prefY[drawCount - 1] / drawCount;
+    const mZ = prefZ[drawCount - 1] / drawCount;
+    controls.target.x += (mX - controls.target.x) * 0.06;
+    controls.target.y += (mY - controls.target.y) * 0.06;
+    controls.target.z += (mZ - controls.target.z) * 0.06;
+  }
   controls.update();
 
   // Resize if needed
@@ -921,14 +945,13 @@ function animate() {
   timeDisplay.textContent = mins + ':' + secs.toString().padStart(2,'0') + ' / ' + tMins + ':' + tSecs.toString().padStart(2,'0');
   seekBar.value = total > 0 ? (t/total)*1000 : 0;
 
+  // End-of-track state cleanup (animation loop keeps running for interaction)
   if (t >= DATA.duration) {
     if (isPlaying) {
       isPlaying = false;
       playBtn.innerHTML = '&#9654; Play';
     }
     pausedAt = DATA.duration;
-    animId = null;
-    return;
   }
   animId = requestAnimationFrame(animate);
 }
@@ -939,9 +962,6 @@ playBtn.addEventListener('click', togglePlay);
 seekBar.addEventListener('input', function() {
   const time = (parseFloat(this.value) / 1000) * DATA.duration;
   pausedAt = time;
-  if (!isPlaying && audioBuffer) {
-    animate();
-  }
   if (isPlaying) seek(time);
 });
 
@@ -995,6 +1015,7 @@ zoomSlider.addEventListener('input', function() {
 });
 
 // ----- fullscreen toggle (targets inner wrapper to include controls) -----
+const innerEl = document.getElementById(id+'-inner');
 const fsBtn = document.getElementById(id+'-fs-btn');
 fsBtn.addEventListener('click', function() {
   if (!document.fullscreenElement) {
