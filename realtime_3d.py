@@ -7,7 +7,7 @@ from audio_processor import audio_to_wav_bytes
 
 # Serialise audio + latent data into a self-contained HTML string with Three.js.
 # Returns an <iframe>-ready component embedding a 3D latent-space viewer.
-def build_3d_component(audio, sr, latent_points, latent_times, centroids, rms, is_dark=True):
+def build_3d_component(audio, sr, latent_points, latent_times, centroids, rms, waveform_peaks, is_dark=True):
     wav_bytes = audio_to_wav_bytes(audio, sr)
     audio_b64 = base64.b64encode(wav_bytes).decode("ascii")
 
@@ -40,6 +40,7 @@ def build_3d_component(audio, sr, latent_points, latent_times, centroids, rms, i
         "audio_b64": audio_b64,
         "sr": sr,
         "is_dark": is_dark,
+        "waveform_peaks": waveform_peaks,
     }
 
     component_id = f"r3d-{uuid.uuid4().hex[:8]}"
@@ -170,12 +171,82 @@ _TEMPLATE = r"""
     flex: 1;
     min-width: 80px;
   }
+  #__COMPONENT_ID__-bottom {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+    flex-shrink: 0;
+    height: 130px;
+  }
+  .__COMPONENT_ID__-bottom-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .__COMPONENT_ID__-bottom-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+    flex-shrink: 0;
+  }
+  .__COMPONENT_ID__-bottom-canvas {
+    flex: 1;
+    position: relative;
+    border-radius: 4px;
+    overflow: hidden;
+    background: var(--bg2);
+    min-height: 0;
+  }
+  .__COMPONENT_ID__-bottom-canvas canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+  }
+  .__COMPONENT_ID__-legend {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 2px;
+    flex-shrink: 0;
+  }
+  .__COMPONENT_ID__-legend-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    font-family: 'SF Mono', Monaco, monospace;
+    white-space: nowrap;
+  }
+  #__COMPONENT_ID__-legend-bar {
+    border-radius: 3px;
+    border: 1px solid rgba(255,255,255,0.08);
+    flex-shrink: 0;
+  }
 </style>
 
 <div id="__COMPONENT_ID__-wrap">
   <div id="__COMPONENT_ID__-inner">
   <div id="__COMPONENT_ID__-viewport">
     <canvas id="__COMPONENT_ID__-three"></canvas>
+  </div>
+
+  <div id="__COMPONENT_ID__-bottom">
+    <div class="__COMPONENT_ID__-bottom-item">
+      <div class="__COMPONENT_ID__-bottom-label">Waveform</div>
+      <div class="__COMPONENT_ID__-bottom-canvas">
+        <canvas id="__COMPONENT_ID__-wave"></canvas>
+      </div>
+    </div>
+    <div class="__COMPONENT_ID__-bottom-item">
+      <div class="__COMPONENT_ID__-bottom-label">Spectral Centroid</div>
+      <div class="__COMPONENT_ID__-legend">
+        <span class="__COMPONENT_ID__-legend-label" id="__COMPONENT_ID__-legend-low">0 kHz</span>
+        <canvas id="__COMPONENT_ID__-legend-bar" width="100" height="8"></canvas>
+        <span class="__COMPONENT_ID__-legend-label" id="__COMPONENT_ID__-legend-high">10 kHz</span>
+      </div>
+      <div class="__COMPONENT_ID__-bottom-canvas">
+        <canvas id="__COMPONENT_ID__-prof"></canvas>
+      </div>
+    </div>
   </div>
 
   <div class="__COMPONENT_ID__-controls">
@@ -223,6 +294,11 @@ const speedVal = document.getElementById(id+'-speed-val');
 const orbitSlider = document.getElementById(id+'-orbit');
 const orbitVal = document.getElementById(id+'-orbit-val');
 const timeDisplay = document.getElementById(id+'-time');
+const waveCanvas = document.getElementById(id+'-wave');
+const profCanvas = document.getElementById(id+'-prof');
+const legendBar = document.getElementById(id+'-legend-bar');
+const legendLow = document.getElementById(id+'-legend-low');
+const legendHigh = document.getElementById(id+'-legend-high');
 
 // ----- audio state -----
 let audioCtx = null;
@@ -236,9 +312,6 @@ let animId = null;
 let currentSpeed = 1.0;
 let currentVol = 0.75;
 let sourceGen = 0;
-
-// ----- BroadcastChannel for syncing profile component -----
-const bc = new BroadcastChannel('latent-3d-sync');
 
 // ----- Three.js -----
 const scene = new THREE.Scene();
@@ -276,7 +349,6 @@ function applyTheme(dark) {
   gridHelper.material.color.set(dark ? 0x444488 : 0xcccccc);
   gridHelper.material.opacity = dark ? 0.4 : 0.5;
   themeBtn.innerHTML = dark ? '&#127769;' : '&#9728;';
-  bc.postMessage({type:'theme', isDark: dark});
 }
 
 themeBtn.addEventListener('click', function() {
@@ -425,37 +497,197 @@ gridHelper.material.opacity = 0.4;
 scene.add(gridHelper);
 applyTheme(isDark);
 
-// ----- centroid color legend (2D canvas overlay) -----
-function buildLegend(container) {
-  const legW = 120, legH = 10;
-  const wrap = document.createElement('div');
-  wrap.style.cssText = 'position:absolute;bottom:12px;right:12px;display:flex;flex-direction:column;align-items:flex-end;gap:2px;pointer-events:none;z-index:10';
-  const labelLow = document.createElement('span');
-  labelLow.textContent = (DATA.centroid_min/1000).toFixed(1)+' kHz';
-  labelLow.style.cssText = 'color:#999;font-size:8px;font-family:monospace';
-  const labelHigh = document.createElement('span');
-  labelHigh.textContent = (DATA.centroid_max/1000).toFixed(1)+' kHz';
-  labelHigh.style.cssText = 'color:#999;font-size:8px;font-family:monospace';
-  const canvas = document.createElement('canvas');
-  canvas.width = legW;
-  canvas.height = legH;
-  canvas.style.cssText = 'border-radius:3px;border:1px solid rgba(255,255,255,0.1)';
-  const ctx = canvas.getContext('2d');
-  for (let i = 0; i < legW; i++) {
-    const t = i / legW;
-    const [r, g, b] = centroidColor(t);
-    ctx.fillStyle = `rgb(${(r*255)<<0},${(g*255)<<0},${(b*255)<<0})`;
-    ctx.fillRect(i, 0, 1, legH);
+// ----- centroid color legend (draw to profile legend bar) -----
+function buildLegend() {
+  const ctx = legendBar.getContext('2d');
+  for (var i = 0; i < legendBar.width; i++) {
+    var t = i / legendBar.width;
+    var [r, g, b] = centroidColor(t);
+    ctx.fillStyle = 'rgb(' + ((r*255)<<0) + ',' + ((g*255)<<0) + ',' + ((b*255)<<0) + ')';
+    ctx.fillRect(i, 0, 1, legendBar.height);
   }
-  const row = document.createElement('div');
-  row.style.cssText = 'display:flex;align-items:center;gap:4px';
-  row.appendChild(labelLow);
-  row.appendChild(canvas);
-  row.appendChild(labelHigh);
-  wrap.appendChild(row);
-  container.appendChild(wrap);
+  legendLow.textContent = (DATA.centroid_min / 1000).toFixed(1) + ' kHz';
+  legendHigh.textContent = (DATA.centroid_max / 1000).toFixed(1) + ' kHz';
 }
-buildLegend(viewport);
+buildLegend();
+
+// ----- waveform drawing -----
+function drawWaveform(t) {
+  var ctx = waveCanvas.getContext('2d');
+  var dpr = window.devicePixelRatio || 1;
+  var rect = waveCanvas.parentElement.getBoundingClientRect();
+  var w = rect.width, h = rect.height;
+  if (w === 0 || h === 0) return;
+  waveCanvas.width = Math.round(w * dpr);
+  waveCanvas.height = Math.round(h * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  var peaks = DATA.waveform_peaks;
+  var n = peaks.length;
+  var dur = DATA.duration;
+
+  // grid
+  ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)';
+  ctx.lineWidth = 1;
+  for (var y = 0.5; y < h; y += h/4) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+  }
+
+  // time marks
+  ctx.font = '9px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  for (var tm = 0; tm <= dur; tm += Math.max(1, Math.round(dur/6))) {
+    var x = (tm / dur) * w;
+    ctx.fillStyle = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillText(tm + 's', x, h - 11);
+    ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)';
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+  }
+
+  // baseline
+  ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
+  ctx.beginPath(); ctx.moveTo(0, h*0.5); ctx.lineTo(w, h*0.5); ctx.stroke();
+
+  // unplayed fill (full waveform)
+  ctx.beginPath();
+  ctx.moveTo(0, h*0.5);
+  for (var i=0; i<n; i++) {
+    ctx.lineTo((i/n)*w, h*0.5 + peaks[i][0] * h*0.42);
+  }
+  for (var i=n-1; i>=0; i--) {
+    ctx.lineTo((i/n)*w, h*0.5 + peaks[i][1] * h*0.42);
+  }
+  ctx.closePath();
+  ctx.fillStyle = isDark ? 'rgba(0,210,255,0.1)' : 'rgba(0,102,204,0.08)';
+  ctx.fill();
+
+  // played overlay (clipped to cursor)
+  if (t >= 0) {
+    var cursorFrac = Math.min(Math.max(t / dur, 0), 1);
+    var cursorX = cursorFrac * w;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, cursorX, h);
+    ctx.clip();
+
+    ctx.beginPath();
+    ctx.moveTo(0, h*0.5);
+    for (var i=0; i<n; i++) {
+      ctx.lineTo((i/n)*w, h*0.5 + peaks[i][0] * h*0.42);
+    }
+    for (var i=n-1; i>=0; i--) {
+      ctx.lineTo((i/n)*w, h*0.5 + peaks[i][1] * h*0.42);
+    }
+    ctx.closePath();
+    ctx.fillStyle = isDark ? 'rgba(0,210,255,0.25)' : 'rgba(0,102,204,0.2)';
+    ctx.fill();
+    ctx.restore();
+
+    // cursor line
+    if (cursorFrac > 0 && cursorFrac < 1) {
+      ctx.beginPath();
+      ctx.moveTo(cursorX, 0);
+      ctx.lineTo(cursorX, h);
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.shadowColor = 'rgba(255,255,255,0.4)';
+      ctx.shadowBlur = 6;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+  }
+}
+
+// ----- spectral centroid profile drawing -----
+function drawProfile(t) {
+  var ctx = profCanvas.getContext('2d');
+  var dpr = window.devicePixelRatio || 1;
+  var rect = profCanvas.parentElement.getBoundingClientRect();
+  var w = rect.width, h = rect.height;
+  if (w === 0 || h === 0) return;
+  profCanvas.width = Math.round(w * dpr);
+  profCanvas.height = Math.round(h * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  var cMin = DATA.centroid_min, cMax = DATA.centroid_max;
+  var rMin = DATA.rms_min, rMax = DATA.rms_max;
+  var cRange = cMax - cMin || 1;
+  var rRange = rMax - rMin || 1;
+
+  var pad = 44;
+  var plotW = w - pad * 2;
+  var plotH = h - pad * 2;
+
+  function toX(c) { return pad + ((c - cMin) / cRange) * plotW; }
+  function toY(r) { return pad + (1 - (r - rMin) / rRange) * plotH; }
+
+  var gridCol = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)';
+  var textCol = isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.35)';
+
+  // grid lines
+  ctx.strokeStyle = gridCol;
+  ctx.lineWidth = 1;
+  for (var i = 0; i <= 4; i++) {
+    var gx = pad + (i/4)*plotW;
+    ctx.beginPath(); ctx.moveTo(gx, pad); ctx.lineTo(gx, pad+plotH); ctx.stroke();
+    var gy = pad + (i/4)*plotH;
+    ctx.beginPath(); ctx.moveTo(pad, gy); ctx.lineTo(pad+plotW, gy); ctx.stroke();
+  }
+
+  // axis labels
+  ctx.fillStyle = textCol;
+  ctx.font = '9px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText('Centroid (Hz)', w/2, h-12);
+  ctx.save();
+  ctx.translate(10, h/2);
+  ctx.rotate(-Math.PI/2);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('RMS Amplitude', 0, 0);
+  ctx.restore();
+
+  var n = DATA.centroids.length;
+
+  // all data points, coloured by centroid
+  for (var i = 0; i < n; i++) {
+    var cx = toX(DATA.centroids[i]);
+    var cy = toY(DATA.rms[i]);
+    var cf = (DATA.centroids[i] - cMin) / cRange;
+    var col = centroidColor(cf);
+    ctx.beginPath();
+    ctx.arc(cx, cy, 2, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(' + ((col[0]*255)<<0) + ',' + ((col[1]*255)<<0) + ',' + ((col[2]*255)<<0) + ',0.5)';
+    ctx.fill();
+  }
+
+  // highlight current playback frame
+  if (t >= 0) {
+    var progress = Math.min(Math.max(t / DATA.duration, 0), 1);
+    var drawIdx = Math.min(Math.floor(progress * n), n);
+    if (drawIdx > 0 && drawIdx <= n) {
+      var idx = drawIdx - 1;
+      var hx = toX(DATA.centroids[idx]);
+      var hy = toY(DATA.rms[idx]);
+      var grad = ctx.createRadialGradient(hx, hy, 0, hx, hy, 14);
+      grad.addColorStop(0, 'rgba(255,215,0,0.5)');
+      grad.addColorStop(1, 'rgba(255,215,0,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(hx, hy, 14, 0, Math.PI*2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(hx, hy, 2.5, 0, Math.PI*2);
+      ctx.fillStyle = '#ffd700';
+      ctx.fill();
+    }
+  }
+}
 
 // ----- audio -----
 function base64ToArrayBuffer(b64) {
@@ -577,8 +809,9 @@ function animate() {
 
   renderer.render(scene, camera);
 
-  // Broadcast current time to profile component
-  bc.postMessage({type:'time', t});
+  // Draw waveform and profile
+  drawWaveform(t);
+  drawProfile(t);
 
   // UI
   const total = DATA.duration;
@@ -646,442 +879,6 @@ const ro = new ResizeObserver(() => {
 });
 ro.observe(viewport);
 </script>
-
-<script>
-(function() {
-  var root = document.getElementById('__COMPONENT_ID__-wrap');
-  function size() { root.style.height = window.innerHeight + 'px'; }
-  size();
-  window.addEventListener('resize', size);
-})();
-</script>
 """
 
 
-# Build a standalone spectral-centroid-vs-amplitude profile component.
-# Renders a 2D scatter of all frames coloured by centroid frequency,
-# with a real-time highlight synced via BroadcastChannel to the 3D component.
-def build_profile_component(audio, sr, latent_points, latent_times, centroids, rms, is_dark=True):
-    centroid_min = float(centroids.min())
-    centroid_max = float(centroids.max())
-    rms_min = float(rms.min())
-    rms_max = float(rms.max())
-
-    data = {
-        "centroids": centroids.tolist(),
-        "rms": rms.tolist(),
-        "centroid_min": centroid_min,
-        "centroid_max": centroid_max,
-        "rms_min": rms_min,
-        "rms_max": rms_max,
-        "duration": float(len(audio) / sr),
-        "is_dark": is_dark,
-    }
-
-    component_id = f"prof-{uuid.uuid4().hex[:8]}"
-    data_json = json.dumps(data)
-
-    html = _PROFILE_TEMPLATE.replace("__COMPONENT_ID__", component_id).replace(
-        "__DATA_JSON__", data_json
-    )
-    return html
-
-
-_PROFILE_TEMPLATE = r"""
-<style>
-  #__COMPONENT_ID__-wrap {
-    --bg: #0a0a1a;
-    --bg2: #070714;
-    --text: #e0e0e0;
-    --text-strong: #fff;
-    --text-muted: #888;
-    --text-label: #999;
-    --accent: #00d2ff;
-    font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-    height: 100%;
-    box-sizing: border-box;
-    color: var(--text);
-    display: flex;
-    flex-direction: column;
-  }
-  #__COMPONENT_ID__-wrap.light {
-    --bg: #f0f2f5;
-    --bg2: #ffffff;
-    --text: #333;
-    --text-strong: #111;
-    --text-muted: #777;
-    --text-label: #666;
-    --accent: #0066cc;
-  }
-  #__COMPONENT_ID__-legend {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    margin-bottom: 6px;
-    flex-shrink: 0;
-  }
-  .__COMPONENT_ID__-legend-label {
-    font-size: 10px;
-    color: var(--text-muted);
-    font-family: 'SF Mono', Monaco, monospace;
-    white-space: nowrap;
-  }
-  #__COMPONENT_ID__-legend-bar {
-    border-radius: 3px;
-    border: 1px solid rgba(255,255,255,0.08);
-  }
-  #__COMPONENT_ID__-canvas-wrap {
-    flex: 1;
-    min-height: 0;
-    position: relative;
-    border-radius: 6px;
-    overflow: hidden;
-    background: var(--bg2);
-  }
-  #__COMPONENT_ID__-canvas-wrap canvas {
-    display: block;
-    width: 100% !important;
-    height: 100% !important;
-  }
-</style>
-
-<div id="__COMPONENT_ID__-wrap">
-  <div id="__COMPONENT_ID__-legend">
-    <span class="__COMPONENT_ID__-legend-label" id="__COMPONENT_ID__-legend-low">0 Hz</span>
-    <canvas id="__COMPONENT_ID__-legend-bar" width="100" height="8"></canvas>
-    <span class="__COMPONENT_ID__-legend-label" id="__COMPONENT_ID__-legend-high">10 kHz</span>
-  </div>
-  <div id="__COMPONENT_ID__-canvas-wrap">
-    <canvas id="__COMPONENT_ID__-prof"></canvas>
-  </div>
-</div>
-
-<script>
-(function() {
-  const DATA = __DATA_JSON__;
-  const id = '__COMPONENT_ID__';
-
-  const wrap = document.getElementById(id+'-wrap');
-  const canvas = document.getElementById(id+'-prof');
-  const legendBar = document.getElementById(id+'-legend-bar');
-  const legendLow = document.getElementById(id+'-legend-low');
-  const legendHigh = document.getElementById(id+'-legend-high');
-
-  let isDark = DATA.is_dark !== undefined ? DATA.is_dark : true;
-  let currentTime = -1;  // -1 = no highlight, show all
-
-  // ----- centroid color map (mirrors 3D component) -----
-  function centroidColor(t) {
-    t = Math.max(0, Math.min(1, t));
-    if (t < 0.33) {
-      const u = t / 0.33;
-      return [0, 0.4 + 0.6*u, 1];
-    } else if (t < 0.66) {
-      const u = (t - 0.33) / 0.33;
-      return [0.6*u, 0.6 + 0.4*u, 1 - u];
-    } else {
-      const u = (t - 0.66) / 0.34;
-      return [0.6 + 0.4*u, 0.4*(1-u), 0.2*(1-u)];
-    }
-  }
-
-  // ----- legend bar -----
-  function buildLegend() {
-    const ctx = legendBar.getContext('2d');
-    for (let i = 0; i < legendBar.width; i++) {
-      const t = i / legendBar.width;
-      const [r, g, b] = centroidColor(t);
-      ctx.fillStyle = 'rgb(' + ((r*255)<<0) + ',' + ((g*255)<<0) + ',' + ((b*255)<<0) + ')';
-      ctx.fillRect(i, 0, 1, legendBar.height);
-    }
-    legendLow.textContent = (DATA.centroid_min / 1000).toFixed(1) + ' kHz';
-    legendHigh.textContent = (DATA.centroid_max / 1000).toFixed(1) + ' kHz';
-  }
-
-  // ----- draw scatter -----
-  function draw(highlightTime) {
-    var ctx = canvas.getContext('2d');
-    var dpr = window.devicePixelRatio || 1;
-    var rect = canvas.parentElement.getBoundingClientRect();
-    var w = rect.width, h = rect.height;
-    if (w === 0 || h === 0) return;
-    canvas.width = Math.round(w * dpr);
-    canvas.height = Math.round(h * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
-
-    var cMin = DATA.centroid_min, cMax = DATA.centroid_max;
-    var rMin = DATA.rms_min, rMax = DATA.rms_max;
-    var cRange = cMax - cMin || 1;
-    var rRange = rMax - rMin || 1;
-
-    var pad = 44;
-    var plotW = w - pad * 2;
-    var plotH = h - pad * 2;
-
-    function toX(c) { return pad + ((c - cMin) / cRange) * plotW; }
-    function toY(r) { return pad + (1 - (r - rMin) / rRange) * plotH; }
-
-    var gridCol = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)';
-    var textCol = isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.35)';
-
-    // grid lines
-    ctx.strokeStyle = gridCol;
-    ctx.lineWidth = 1;
-    for (var i = 0; i <= 4; i++) {
-      var gx = pad + (i/4)*plotW;
-      ctx.beginPath(); ctx.moveTo(gx, pad); ctx.lineTo(gx, pad+plotH); ctx.stroke();
-      var gy = pad + (i/4)*plotH;
-      ctx.beginPath(); ctx.moveTo(pad, gy); ctx.lineTo(pad+plotW, gy); ctx.stroke();
-    }
-
-    // axis labels
-    ctx.fillStyle = textCol;
-    ctx.font = '9px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText('Spectral Centroid (Hz)', w/2, h-12);
-    ctx.save();
-    ctx.translate(10, h/2);
-    ctx.rotate(-Math.PI/2);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('RMS Amplitude', 0, 0);
-    ctx.restore();
-
-    var n = DATA.centroids.length;
-
-    // all data points, coloured by centroid
-    for (var i = 0; i < n; i++) {
-      var cx = toX(DATA.centroids[i]);
-      var cy = toY(DATA.rms[i]);
-      var cf = (DATA.centroids[i] - cMin) / cRange;
-      var col = centroidColor(cf);
-      ctx.beginPath();
-      ctx.arc(cx, cy, 2, 0, Math.PI*2);
-      ctx.fillStyle = 'rgba(' + ((col[0]*255)<<0) + ',' + ((col[1]*255)<<0) + ',' + ((col[2]*255)<<0) + ',0.5)';
-      ctx.fill();
-    }
-
-    // highlight current playback frame
-    if (highlightTime >= 0) {
-      var progress = Math.min(Math.max(highlightTime / DATA.duration, 0), 1);
-      var drawIdx = Math.min(Math.floor(progress * n), n);
-      if (drawIdx > 0 && drawIdx <= n) {
-        var idx = drawIdx - 1;
-        var hx = toX(DATA.centroids[idx]);
-        var hy = toY(DATA.rms[idx]);
-        var grad = ctx.createRadialGradient(hx, hy, 0, hx, hy, 14);
-        grad.addColorStop(0, 'rgba(255,215,0,0.5)');
-        grad.addColorStop(1, 'rgba(255,215,0,0)');
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.arc(hx, hy, 14, 0, Math.PI*2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(hx, hy, 2.5, 0, Math.PI*2);
-        ctx.fillStyle = '#ffd700';
-        ctx.fill();
-      }
-    }
-  }
-
-  // ----- BroadcastChannel sync -----
-  var bc = new BroadcastChannel('latent-3d-sync');
-  bc.onmessage = function(e) {
-    var msg = e.data;
-    if (msg.type === 'time') {
-      currentTime = msg.t;
-      draw(currentTime);
-    } else if (msg.type === 'theme') {
-      isDark = msg.isDark;
-      wrap.classList.toggle('light', !isDark);
-      draw(currentTime);
-    }
-  };
-
-  // ----- resize -----
-  var ro = new ResizeObserver(function() {
-    draw(currentTime);
-  });
-  ro.observe(canvas.parentElement);
-
-  // ----- init -----
-  buildLegend();
-  draw(-1);
-})();
-</script>
-"""
-
-
-# Build a standalone waveform component that syncs via BroadcastChannel with the 3D player.
-def build_waveform_component(waveform_peaks, duration, is_dark=True):
-    data = {
-        "waveform_peaks": waveform_peaks,
-        "duration": duration,
-        "is_dark": is_dark,
-    }
-
-    component_id = f"wave-{uuid.uuid4().hex[:8]}"
-    data_json = json.dumps(data)
-
-    html = _WAVEFORM_TEMPLATE.replace("__COMPONENT_ID__", component_id).replace(
-        "__DATA_JSON__", data_json
-    )
-    return html
-
-
-_WAVEFORM_TEMPLATE = r"""
-<style>
-  #__COMPONENT_ID__-wrap {
-    font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-    height: 100%;
-    box-sizing: border-box;
-  }
-  #__COMPONENT_ID__-canvas-wrap {
-    border-radius: 6px;
-    overflow: hidden;
-    height: 100%;
-    background: #070714;
-  }
-  #__COMPONENT_ID__-canvas-wrap canvas {
-    display: block;
-    width: 100% !important;
-    height: 100% !important;
-  }
-  #__COMPONENT_ID__-wrap.light #__COMPONENT_ID__-canvas-wrap {
-    background: #ffffff;
-  }
-</style>
-
-<div id="__COMPONENT_ID__-wrap">
-  <div id="__COMPONENT_ID__-canvas-wrap">
-    <canvas id="__COMPONENT_ID__-wave"></canvas>
-  </div>
-</div>
-
-<script>
-(function() {
-  const DATA = __DATA_JSON__;
-  const id = '__COMPONENT_ID__';
-
-  const wrap = document.getElementById(id+'-wrap');
-  const canvas = document.getElementById(id+'-wave');
-  let isDark = DATA.is_dark !== undefined ? DATA.is_dark : true;
-  let currentTime = -1;
-
-  function draw(highlightTime) {
-    var ctx = canvas.getContext('2d');
-    var dpr = window.devicePixelRatio || 1;
-    var rect = canvas.parentElement.getBoundingClientRect();
-    var w = rect.width, h = rect.height;
-    if (w === 0 || h === 0) return;
-    canvas.width = Math.round(w * dpr);
-    canvas.height = Math.round(h * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
-
-    var peaks = DATA.waveform_peaks;
-    var n = peaks.length;
-    var dur = DATA.duration;
-
-    // grid
-    ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)';
-    ctx.lineWidth = 1;
-    for (var y = 0.5; y < h; y += h/4) {
-      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
-    }
-
-    // time marks
-    ctx.font = '9px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    for (var t = 0; t <= dur; t += Math.max(1, Math.round(dur/6))) {
-      var x = (t / dur) * w;
-      ctx.fillStyle = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
-      ctx.fillText(t + 's', x, h - 11);
-      ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)';
-      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
-    }
-
-    // baseline
-    ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
-    ctx.beginPath(); ctx.moveTo(0, h*0.5); ctx.lineTo(w, h*0.5); ctx.stroke();
-
-    // unplayed fill (full waveform)
-    ctx.beginPath();
-    ctx.moveTo(0, h*0.5);
-    for (var i=0; i<n; i++) {
-      ctx.lineTo((i/n)*w, h*0.5 + peaks[i][0] * h*0.42);
-    }
-    for (var i=n-1; i>=0; i--) {
-      ctx.lineTo((i/n)*w, h*0.5 + peaks[i][1] * h*0.42);
-    }
-    ctx.closePath();
-    ctx.fillStyle = isDark ? 'rgba(0,210,255,0.1)' : 'rgba(0,102,204,0.08)';
-    ctx.fill();
-
-    // played overlay (clipped to cursor)
-    if (highlightTime >= 0) {
-      var cursorFrac = Math.min(Math.max(highlightTime / dur, 0), 1);
-      var cursorX = cursorFrac * w;
-
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(0, 0, cursorX, h);
-      ctx.clip();
-
-      ctx.beginPath();
-      ctx.moveTo(0, h*0.5);
-      for (var i=0; i<n; i++) {
-        ctx.lineTo((i/n)*w, h*0.5 + peaks[i][0] * h*0.42);
-      }
-      for (var i=n-1; i>=0; i--) {
-        ctx.lineTo((i/n)*w, h*0.5 + peaks[i][1] * h*0.42);
-      }
-      ctx.closePath();
-      ctx.fillStyle = isDark ? 'rgba(0,210,255,0.25)' : 'rgba(0,102,204,0.2)';
-      ctx.fill();
-      ctx.restore();
-
-      // cursor line
-      if (cursorFrac > 0 && cursorFrac < 1) {
-        ctx.beginPath();
-        ctx.moveTo(cursorX, 0);
-        ctx.lineTo(cursorX, h);
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2;
-        ctx.shadowColor = 'rgba(255,255,255,0.4)';
-        ctx.shadowBlur = 6;
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-      }
-    }
-  }
-
-  // ----- BroadcastChannel sync -----
-  var bc = new BroadcastChannel('latent-3d-sync');
-  bc.onmessage = function(e) {
-    var msg = e.data;
-    if (msg.type === 'time') {
-      currentTime = msg.t;
-      draw(currentTime);
-    } else if (msg.type === 'theme') {
-      isDark = msg.isDark;
-      wrap.classList.toggle('light', !isDark);
-      draw(currentTime);
-    }
-  };
-
-  // ----- resize -----
-  var ro = new ResizeObserver(function() {
-    draw(currentTime);
-  });
-  ro.observe(canvas.parentElement);
-
-  // ----- init -----
-  draw(-1);
-})();
-</script>
-"""

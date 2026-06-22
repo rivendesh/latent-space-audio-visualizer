@@ -11,7 +11,7 @@ import librosa
 from audio_processor import load_audio, compute_waveform_peaks
 from latent_encoder import LatentEncoder
 from realtime_component import build_realtime_component
-from realtime_3d import build_3d_component, build_profile_component, build_waveform_component
+from realtime_3d import build_3d_component
 
 
 # ---------- CLI args: support --file / -f and AUDIO_FILE env var ----------
@@ -368,7 +368,6 @@ with tab2:
     st.components.v1.html(html, height=680)
 
 with tab3:
-    st.markdown("### 3D Manifold")
     html_3d = build_3d_component(
         audio=pb_audio,
         sr=sr,
@@ -376,26 +375,7 @@ with tab3:
         latent_times=pb_times,
         centroids=pb_centroids,
         rms=pb_rms,
-        is_dark=is_dark,
-    )
-    st.components.v1.html(html_3d, height=400)
-
-    st.markdown("### Waveform")
-    html_wave = build_waveform_component(
         waveform_peaks=pb_peaks,
-        duration=len(pb_audio) / sr,
         is_dark=is_dark,
     )
-    st.components.v1.html(html_wave, height=80)
-
-    st.markdown("### Spectral Centroid vs RMS Amplitude")
-    html_prof = build_profile_component(
-        audio=pb_audio,
-        sr=sr,
-        latent_points=pb_latent,
-        latent_times=pb_times,
-        centroids=pb_centroids,
-        rms=pb_rms,
-        is_dark=is_dark,
-    )
-    st.components.v1.html(html_prof, height=180)
+    st.components.v1.html(html_3d, height=560)
