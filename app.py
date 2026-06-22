@@ -57,7 +57,7 @@ st.markdown("""
 <style>
 div[data-testid="stTabContent"] > div {
     overflow-y: auto;
-    max-height: calc(100vh - 200px);
+    max-height: 3000px;
 }
 section[data-testid="stSidebar"] .stMarkdown p { word-break: break-word; overflow-wrap: break-word; }
 section[data-testid="stSidebar"] .stMarkdown code { word-break: break-all; white-space: pre-wrap; }
