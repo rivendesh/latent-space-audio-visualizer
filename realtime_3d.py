@@ -322,7 +322,6 @@ _TEMPLATE = r"""
     <label>Pan</label>
     <select id="__COMPONENT_ID__-pan-mode" style="background:var(--bg2);color:var(--text);border:1px solid var(--text-muted);border-radius:4px;font-size:11px;padding:2px 4px;width:66px;">
       <option value="midpoint">Midpoint</option>
-      <option value="node">Node</option>
       <option value="none">None</option>
     </select>
   </div>
@@ -951,24 +950,15 @@ function animate() {
   // Update trajectory line
   lineGeo.setDrawRange(0, Math.max(0, drawCount - 1));
 
-  // Track the pan target — running midpoint, node (head), or none (fixed).
-  if (drawCount > 0 && panMode !== 'none') {
-    var tx, ty, tz;
-    if (panMode === 'node') {
-      tx = points3d[drawCount - 1][0];
-      ty = points3d[drawCount - 1][1];
-      tz = points3d[drawCount - 1][2];
-      tz *= dataGroup.scale.z;
-      controls.target.set(tx, ty, tz);
-    } else {
-      tx = prefX[drawCount - 1] / drawCount;
-      ty = prefY[drawCount - 1] / drawCount;
-      tz = prefZ[drawCount - 1] / drawCount;
-      tz *= dataGroup.scale.z;
-      controls.target.x += (tx - controls.target.x) * 0.12;
-      controls.target.y += (ty - controls.target.y) * 0.12;
-      controls.target.z += (tz - controls.target.z) * 0.12;
-    }
+  // Track the pan target — running midpoint or none (fixed).
+  if (drawCount > 0 && panMode === 'midpoint') {
+    var tx = prefX[drawCount - 1] / drawCount;
+    var ty = prefY[drawCount - 1] / drawCount;
+    var tz = prefZ[drawCount - 1] / drawCount;
+    tz *= dataGroup.scale.z;
+    controls.target.x += (tx - controls.target.x) * 0.12;
+    controls.target.y += (ty - controls.target.y) * 0.12;
+    controls.target.z += (tz - controls.target.z) * 0.12;
   }
   controls.update();
 
