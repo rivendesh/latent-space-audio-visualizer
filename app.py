@@ -11,6 +11,7 @@ import librosa
 from audio_processor import load_audio, compute_waveform_peaks
 from latent_encoder import LatentEncoder
 from realtime_component import build_realtime_component
+from realtime_3d import build_3d_component
 
 
 # ---------- CLI args ----------
@@ -244,7 +245,7 @@ else:
 with st.spinner("Processing audio …"):
     audio, sr = load_audio(file_bytes)
     encoder = LatentEncoder(n_mels=n_mels, hop_length=hop_length)
-    latent_points, latent_times = encoder.encode(audio, sr)
+    latent_points, latent_times, centroids, rms = encoder.encode(audio, sr)
     waveform_peaks = compute_waveform_peaks(audio)
 
 duration = len(audio) / sr
@@ -270,7 +271,7 @@ def _st_download_html(fig, filename, label):
 
 
 # ---------- tabs ----------
-tab1, tab2 = st.tabs(["Static Analysis", "Real-Time Player"])
+tab1, tab2, tab3 = st.tabs(["Static Analysis", "Real-Time Player", "3D Render"])
 
 with tab1:
     latent_fig = _build_latent_figure(latent_points)
@@ -305,6 +306,8 @@ if len(audio) > max_samples:
     pb_latent = latent_points[:pb_n]
     pb_times = latent_times[:pb_n]
     pb_peaks = compute_waveform_peaks(pb_audio)
+    pb_centroids = centroids[:pb_n]
+    pb_rms = rms[:pb_n]
     st.caption(
         f"Real-Time Player uses the first {max_playback}s "
         f"({pb_n} frames) of {duration:.0f}s total."
@@ -314,6 +317,8 @@ else:
     pb_latent = latent_points
     pb_times = latent_times
     pb_peaks = waveform_peaks
+    pb_centroids = centroids
+    pb_rms = rms
 
 with tab2:
     html = build_realtime_component(
@@ -324,3 +329,14 @@ with tab2:
         waveform_peaks=pb_peaks,
     )
     st.components.v1.html(html, height=680)
+
+with tab3:
+    html_3d = build_3d_component(
+        audio=pb_audio,
+        sr=sr,
+        latent_points=pb_latent,
+        latent_times=pb_times,
+        centroids=pb_centroids,
+        rms=pb_rms,
+    )
+    st.components.v1.html(html_3d, height=960)

@@ -34,7 +34,15 @@ class LatentEncoder:
         n_frames = features.shape[0]
         times = np.arange(n_frames) * self.hop_length / sr
 
-        return latent_points, times
+        S = np.abs(librosa.stft(audio, hop_length=self.hop_length))
+        centroids = librosa.feature.spectral_centroid(S=S, sr=sr)[0]
+        rms = librosa.feature.rms(S=S)[0]
+
+        n_feats = min(len(centroids), n_frames)
+        centroids = centroids[:n_feats]
+        rms = rms[:n_feats]
+
+        return latent_points, times, centroids, rms
 
     @property
     def explained_variance_ratio(self):
