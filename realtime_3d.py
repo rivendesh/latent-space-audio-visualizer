@@ -87,6 +87,12 @@ _TEMPLATE = r"""
     flex: 1;
     min-height: 0;
   }
+  #__COMPONENT_ID__-inner:fullscreen {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: var(--bg);
+  }
   #__COMPONENT_ID__-viewport {
     position: relative;
     border-radius: 6px;
@@ -421,6 +427,7 @@ scene.add(dataGroup);
 
 // ----- theme -----
 const wrapEl = document.getElementById(id+'-wrap');
+const innerEl = document.getElementById(id+'-inner');
 const themeBtn = document.getElementById(id+'-theme');
 let isDark = DATA.is_dark !== undefined ? DATA.is_dark : true;
 
@@ -1041,18 +1048,30 @@ zoomSlider.addEventListener('input', function() {
   camera.updateProjectionMatrix();
 });
 
-// ----- fullscreen toggle -----
+// ----- fullscreen toggle (targets inner wrapper to include controls) -----
 const fsBtn = document.getElementById(id+'-fs-btn');
 fsBtn.addEventListener('click', function() {
   if (!document.fullscreenElement) {
-    viewport.requestFullscreen();
+    innerEl.requestFullscreen();
   } else {
     document.exitFullscreen();
   }
 });
 function onFsChange() {
-  fsBtn.textContent = document.fullscreenElement ? '✕' : '⛶';
-  // resize handled by ResizeObserver on viewport
+  const isFs = !!document.fullscreenElement;
+  fsBtn.textContent = isFs ? '✕' : '⛶';
+  if (!isFs && viewport) {
+    // Force correct sizing after exiting fullscreen
+    requestAnimationFrame(function() {
+      var w = viewport.clientWidth, h = viewport.clientHeight;
+      if (w > 0 && h > 0) {
+        renderer.setSize(w, h);
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+      }
+      animate();
+    });
+  }
 }
 document.addEventListener('fullscreenchange', onFsChange);
 document.addEventListener('webkitfullscreenchange', onFsChange);
