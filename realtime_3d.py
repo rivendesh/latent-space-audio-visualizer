@@ -171,6 +171,41 @@ _TEMPLATE = r"""
     flex: 1;
     min-width: 80px;
   }
+  .__COMPONENT_ID__-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+  }
+  .__COMPONENT_ID__-slider-row input[type=range] {
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: var(--range-bg);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+    margin: 0;
+  }
+  .__COMPONENT_ID__-slider-row input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+  }
+  .__COMPONENT_ID__-slider-row label {
+    font-size: 11px;
+    color: var(--text-label);
+    white-space: nowrap;
+  }
+  .__COMPONENT_ID__-slider-row .val {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: 'SF Mono',Monaco,monospace;
+    min-width: 28px;
+  }
   #__COMPONENT_ID__-bottom {
     display: flex;
     gap: 10px;
@@ -252,23 +287,31 @@ _TEMPLATE = r"""
   <div class="__COMPONENT_ID__-controls">
     <button id="__COMPONENT_ID__-play">&#9654; Play</button>
     <input type="range" class="__COMPONENT_ID__-seek" id="__COMPONENT_ID__-seek" min="0" max="1000" value="0">
-    <label>Vol</label>
-    <input type="range" id="__COMPONENT_ID__-vol" min="0" max="100" value="75" style="width:64px">
-    <span class="val" id="__COMPONENT_ID__-vol-val">75%</span>
-    <label>Spd</label>
-    <input type="range" id="__COMPONENT_ID__-speed" min="0.25" max="3" step="0.25" value="1" style="width:64px">
-    <span class="val" id="__COMPONENT_ID__-speed-val">1x</span>
-    <label>Orbit</label>
-    <input type="range" id="__COMPONENT_ID__-orbit" min="-0.4" max="0.4" step="0.05" value="0.2" style="width:64px">
-    <span class="val" id="__COMPONENT_ID__-orbit-val">0.2</span>
-    <label>Stretch</label>
-    <input type="range" id="__COMPONENT_ID__-stretch" min="0.5" max="3" step="0.1" value="1" style="width:64px">
-    <span class="val" id="__COMPONENT_ID__-stretch-val">1</span>
-    <label>Slc</label>
-    <input type="range" id="__COMPONENT_ID__-slices" min="2" max="20" value="5" style="width:64px">
-    <span class="val" id="__COMPONENT_ID__-slices-val">5</span>
     <span class="time" id="__COMPONENT_ID__-time">0:00 / 0:00</span>
     <button class="theme-btn" id="__COMPONENT_ID__-theme">&#127769;</button>
+  </div>
+  <div class="__COMPONENT_ID__-slider-row">
+    <label>Vol</label>
+    <input type="range" id="__COMPONENT_ID__-vol" min="0" max="100" value="75" style="width:56px">
+    <span class="val" id="__COMPONENT_ID__-vol-val">75%</span>
+    <label>Spd</label>
+    <input type="range" id="__COMPONENT_ID__-speed" min="0.25" max="3" step="0.25" value="1" style="width:56px">
+    <span class="val" id="__COMPONENT_ID__-speed-val">1x</span>
+    <label>Orbit</label>
+    <input type="range" id="__COMPONENT_ID__-orbit" min="-0.4" max="0.4" step="0.05" value="0.2" style="width:56px">
+    <span class="val" id="__COMPONENT_ID__-orbit-val">0.2</span>
+    <label>Stretch</label>
+    <input type="range" id="__COMPONENT_ID__-stretch" min="0.5" max="6" step="0.1" value="1" style="width:56px">
+    <span class="val" id="__COMPONENT_ID__-stretch-val">1</span>
+    <label>Slc</label>
+    <input type="range" id="__COMPONENT_ID__-slices" min="0" max="10" value="5" style="width:56px">
+    <span class="val" id="__COMPONENT_ID__-slices-val">5</span>
+    <label>Op</label>
+    <input type="range" id="__COMPONENT_ID__-slice-op" min="0" max="100" value="20" style="width:56px">
+    <span class="val" id="__COMPONENT_ID__-slice-op-val">20</span>
+    <label>Zoom</label>
+    <input type="range" id="__COMPONENT_ID__-zoom" min="5" max="50" value="15" style="width:56px">
+    <span class="val" id="__COMPONENT_ID__-zoom-val">1.5</span>
   </div>
   </div>
 </div>
@@ -303,6 +346,10 @@ const stretchSlider = document.getElementById(id+'-stretch');
 const stretchVal = document.getElementById(id+'-stretch-val');
 const slicesSlider = document.getElementById(id+'-slices');
 const slicesVal = document.getElementById(id+'-slices-val');
+const sliceOpSlider = document.getElementById(id+'-slice-op');
+const sliceOpVal = document.getElementById(id+'-slice-op-val');
+const zoomSlider = document.getElementById(id+'-zoom');
+const zoomVal = document.getElementById(id+'-zoom-val');
 const timeDisplay = document.getElementById(id+'-time');
 const waveCanvas = document.getElementById(id+'-wave');
 const profCanvas = document.getElementById(id+'-prof');
@@ -328,7 +375,8 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x070714);
 
 const camera = new THREE.PerspectiveCamera(45, viewport.clientWidth / viewport.clientHeight, 0.1, 100);
-camera.position.set(7, 5, 7);
+camera.position.set(5, 3.5, 5);
+camera.zoom = 1.5;
 
 const renderer = new THREE.WebGLRenderer({
   canvas: threeCanvas,
@@ -367,9 +415,7 @@ function applyTheme(dark) {
     g.material.opacity = dark ? 0.55 : 0.5;
   });
   timePlaneMat.color.set(dark ? 0x6666aa : 0x888888);
-  timePlaneMat.opacity = dark ? 0.06 : 0.08;
   timePlaneEdgeMat.color.set(dark ? 0x8888cc : 0x999999);
-  timePlaneEdgeMat.opacity = dark ? 0.12 : 0.15;
   themeBtn.innerHTML = dark ? '&#127769;' : '&#9728;';
 }
 
@@ -555,12 +601,14 @@ const timePlaneEdgeMat = new THREE.LineBasicMaterial({
 applyTheme(isDark);
 
 // ----- build time slice planes -----
-function buildTimePlanes(step) {
+function buildTimePlanes(n) {
   while (timePlaneGroup.children.length) {
     const c = timePlaneGroup.children[0];
     c.geometry.dispose();
     timePlaneGroup.remove(c);
   }
+  if (n <= 0) return;
+  const step = 1 / n;
   for (let z = 0; z <= 1.001; z += step) {
     const geo = new THREE.PlaneGeometry(axExt * 2, axExt * 2);
     const mesh = new THREE.Mesh(geo, timePlaneMat);
@@ -572,7 +620,7 @@ function buildTimePlanes(step) {
     timePlaneGroup.add(line);
   }
 }
-buildTimePlanes(0.2);
+buildTimePlanes(5);
 
 // ----- centroid color legend (draw to profile legend bar) -----
 function buildLegend() {
@@ -954,7 +1002,22 @@ stretchSlider.addEventListener('input', function() {
 slicesSlider.addEventListener('input', function() {
   const v = parseInt(this.value);
   slicesVal.textContent = v;
-  buildTimePlanes(1 / v);
+  buildTimePlanes(v);
+});
+
+sliceOpSlider.addEventListener('input', function() {
+  const v = parseInt(this.value);
+  sliceOpVal.textContent = v;
+  const op = v / 100;
+  timePlaneMat.opacity = op;
+  timePlaneEdgeMat.opacity = op * 2;
+});
+
+zoomSlider.addEventListener('input', function() {
+  const v = parseInt(this.value);
+  zoomVal.textContent = (v / 10).toFixed(1);
+  camera.zoom = v / 10;
+  camera.updateProjectionMatrix();
 });
 
 // ----- init -----
