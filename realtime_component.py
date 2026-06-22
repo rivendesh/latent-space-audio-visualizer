@@ -84,6 +84,7 @@ _HTML_TEMPLATE = """
   var animId = null;
   var currentSpeed = 1.0;
   var currentVol = 0.75;
+  var sourceGen = 0;
 
   function sizeCanvas(canvas) {
     var rect = canvas.getBoundingClientRect();
@@ -126,10 +127,19 @@ _HTML_TEMPLATE = """
   }
 
   function createSource() {
+    sourceGen++;
+    var myGen = sourceGen;
     var s = audioCtx.createBufferSource();
     s.buffer = audioBuffer;
     s.playbackRate.setValueAtTime(currentSpeed, audioCtx.currentTime);
     s.connect(gainNode);
+    s.onended = function() {
+      if (isPlaying && myGen === sourceGen) {
+        isPlaying = false;
+        pausedAt = DATA.duration;
+        playBtn.innerHTML = '&#9654; Play';
+      }
+    };
     return s;
   }
 
@@ -145,13 +155,6 @@ _HTML_TEMPLATE = """
     isPlaying = true;
     playBtn.innerHTML = '&#9646;&#9646; Pause';
 
-    source.onended = function() {
-      if (isPlaying) {
-        isPlaying = false;
-        pausedAt = DATA.duration;
-        playBtn.innerHTML = '&#9654; Play';
-      }
-    };
     if (!animId) tick();
   }
 
