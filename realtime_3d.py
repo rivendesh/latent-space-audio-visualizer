@@ -259,8 +259,11 @@ _TEMPLATE = r"""
     <input type="range" id="__COMPONENT_ID__-speed" min="0.25" max="3" step="0.25" value="1" style="width:64px">
     <span class="val" id="__COMPONENT_ID__-speed-val">1x</span>
     <label>Orbit</label>
-    <input type="range" id="__COMPONENT_ID__-orbit" min="0" max="5" step="0.1" value="0.4" style="width:64px">
-    <span class="val" id="__COMPONENT_ID__-orbit-val">0.4</span>
+    <input type="range" id="__COMPONENT_ID__-orbit" min="-0.4" max="0.4" step="0.05" value="0.2" style="width:64px">
+    <span class="val" id="__COMPONENT_ID__-orbit-val">0.2</span>
+    <label>Stretch</label>
+    <input type="range" id="__COMPONENT_ID__-stretch" min="0.5" max="3" step="0.1" value="1" style="width:64px">
+    <span class="val" id="__COMPONENT_ID__-stretch-val">1</span>
     <label>Slc</label>
     <input type="range" id="__COMPONENT_ID__-slices" min="2" max="20" value="5" style="width:64px">
     <span class="val" id="__COMPONENT_ID__-slices-val">5</span>
@@ -296,6 +299,8 @@ const speedSlider = document.getElementById(id+'-speed');
 const speedVal = document.getElementById(id+'-speed-val');
 const orbitSlider = document.getElementById(id+'-orbit');
 const orbitVal = document.getElementById(id+'-orbit-val');
+const stretchSlider = document.getElementById(id+'-stretch');
+const stretchVal = document.getElementById(id+'-stretch-val');
 const slicesSlider = document.getElementById(id+'-slices');
 const slicesVal = document.getElementById(id+'-slices-val');
 const timeDisplay = document.getElementById(id+'-time');
@@ -337,9 +342,13 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.autoRotate = true;
-controls.autoRotateSpeed = 0.4;
+controls.autoRotateSpeed = 0.2;
 controls.target.set(0, 0, 0.5);
 controls.update();
+
+// Data group for time-axis stretching
+const dataGroup = new THREE.Group();
+scene.add(dataGroup);
 
 // ----- theme -----
 const wrapEl = document.getElementById(id+'-wrap');
@@ -446,7 +455,7 @@ const pointMat = new THREE.PointsMaterial({
   blending: THREE.AdditiveBlending,
 });
 const points = new THREE.Points(pointGeo, pointMat);
-scene.add(points);
+dataGroup.add(points);
 
 // Trajectory line
 const linePos = new Float32Array(n * 3);
@@ -464,7 +473,7 @@ const lineMat = new THREE.LineBasicMaterial({
   opacity: 0.3,
 });
 const line = new THREE.Line(lineGeo, lineMat);
-scene.add(line);
+dataGroup.add(line);
 
 // ----- axes -----
 function makeLabelSprite(text) {
@@ -530,7 +539,7 @@ scene.add(gridBack);
 
 // Time slice planes — vertical XY planes at regular z intervals
 const timePlaneGroup = new THREE.Group();
-scene.add(timePlaneGroup);
+dataGroup.add(timePlaneGroup);
 const timePlaneMat = new THREE.MeshBasicMaterial({
   color: 0x6666aa,
   transparent: true,
@@ -932,8 +941,14 @@ speedSlider.addEventListener('input', function() {
 
 orbitSlider.addEventListener('input', function() {
   const v = parseFloat(this.value);
-  orbitVal.textContent = v.toFixed(1);
+  orbitVal.textContent = v.toFixed(2);
   controls.autoRotateSpeed = v;
+});
+
+stretchSlider.addEventListener('input', function() {
+  const v = parseFloat(this.value);
+  stretchVal.textContent = v.toFixed(1);
+  dataGroup.scale.z = v;
 });
 
 slicesSlider.addEventListener('input', function() {
