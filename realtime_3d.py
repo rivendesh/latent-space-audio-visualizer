@@ -320,6 +320,7 @@ _TEMPLATE = r"""
     <select id="__COMPONENT_ID__-pan-mode" style="background:var(--bg2);color:var(--text);border:1px solid var(--text-muted);border-radius:4px;font-size:11px;padding:2px 4px;width:66px;">
       <option value="midpoint">Midpoint</option>
       <option value="head">Head</option>
+      <option value="none">None</option>
     </select>
   </div>
   </div>
@@ -946,8 +947,8 @@ function animate() {
   // Update trajectory line
   lineGeo.setDrawRange(0, Math.max(0, drawCount - 1));
 
-  // Track the pan target — either running midpoint or the most recent node.
-  if (drawCount > 0) {
+  // Track the pan target — running midpoint, head node, or none (fixed).
+  if (drawCount > 0 && panMode !== 'none') {
     var tx, ty, tz;
     if (panMode === 'head') {
       tx = points3d[drawCount - 1][0];
@@ -958,9 +959,10 @@ function animate() {
       ty = prefY[drawCount - 1] / drawCount;
       tz = prefZ[drawCount - 1] / drawCount;
     }
-    controls.target.x += (tx - controls.target.x) * 0.06;
-    controls.target.y += (ty - controls.target.y) * 0.06;
-    controls.target.z += (tz - controls.target.z) * 0.06;
+    tz *= dataGroup.scale.z;
+    controls.target.x += (tx - controls.target.x) * 0.12;
+    controls.target.y += (ty - controls.target.y) * 0.12;
+    controls.target.z += (tz - controls.target.z) * 0.12;
   }
   controls.update();
 
@@ -1061,6 +1063,15 @@ zoomSlider.addEventListener('input', function() {
 const panSelect = document.getElementById(id+'-pan-mode');
 panSelect.addEventListener('change', function() {
   panMode = this.value;
+  if (panMode === 'head') {
+    camera.zoom = 2.0;
+    zoomVal.textContent = '2.0';
+  } else {
+    camera.zoom = 1.5;
+    zoomVal.textContent = '1.5';
+  }
+  camera.updateProjectionMatrix();
+  zoomSlider.value = Math.round(camera.zoom * 10);
 });
 
 // ----- fullscreen toggle (targets inner wrapper to include controls) -----

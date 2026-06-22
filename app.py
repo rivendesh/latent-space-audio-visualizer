@@ -355,4 +355,4 @@ with tab3:
         rms=pb_rms,
         waveform_peaks=pb_peaks,
     )
-    st.components.v1.html(html_3d, height=1120)
+    st.components.v1.html(html_3d, height=2240)
