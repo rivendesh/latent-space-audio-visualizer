@@ -80,11 +80,14 @@ _TEMPLATE = r"""
     flex: 1;
     min-height: 0;
   }
-  #__COMPONENT_ID__-inner:fullscreen {
+  #__COMPONENT_ID__-viewport:fullscreen {
     width: 100vw;
     height: 100vh;
-    overflow: hidden;
-    background: var(--bg);
+    background: var(--bg2);
+  }
+  #__COMPONENT_ID__-viewport:fullscreen canvas {
+    width: 100vw !important;
+    height: 100vh !important;
   }
   #__COMPONENT_ID__-viewport {
     position: relative;
@@ -1067,12 +1070,11 @@ fadeSlider.addEventListener('input', function() {
   fadeVal.textContent = fadeExp.toFixed(1);
 });
 
-// ----- fullscreen toggle (targets inner wrapper to include controls) -----
-const innerEl = document.getElementById(id+'-inner');
+// ----- fullscreen toggle (viewport only — no controls/panels) -----
 const fsBtn = document.getElementById(id+'-fs-btn');
 fsBtn.addEventListener('click', function() {
   if (!document.fullscreenElement) {
-    innerEl.requestFullscreen();
+    viewport.requestFullscreen();
   } else {
     document.exitFullscreen();
   }
