@@ -5,7 +5,9 @@ import uuid
 from audio_processor import audio_to_wav_bytes
 
 
-def build_3d_component(audio, sr, latent_points, latent_times, centroids, rms):
+# Serialise audio + latent data into a self-contained HTML string with Three.js.
+# Returns an <iframe>-ready component embedding a 3D latent-space viewer.
+def build_3d_component(audio, sr, latent_points, latent_times, centroids, rms, is_dark=True):
     wav_bytes = audio_to_wav_bytes(audio, sr)
     audio_b64 = base64.b64encode(wav_bytes).decode("ascii")
 
@@ -37,6 +39,7 @@ def build_3d_component(audio, sr, latent_points, latent_times, centroids, rms):
         "duration": float(len(audio) / sr),
         "audio_b64": audio_b64,
         "sr": sr,
+        "is_dark": is_dark,
     }
 
     component_id = f"r3d-{uuid.uuid4().hex[:8]}"
@@ -116,7 +119,7 @@ _TEMPLATE = r"""
     margin-top: 10px;
     border-radius: 6px;
     overflow: hidden;
-    height: 160px;
+    height: 120px;
     background: var(--bg2);
   }
   #__COMPONENT_ID__-prof-wrap canvas {
@@ -222,8 +225,8 @@ _TEMPLATE = r"""
     <input type="range" id="__COMPONENT_ID__-speed" min="0.25" max="3" step="0.25" value="1" style="width:64px">
     <span class="val" id="__COMPONENT_ID__-speed-val">1x</span>
     <label>Orbit</label>
-    <input type="range" id="__COMPONENT_ID__-orbit" min="0" max="5" step="0.1" value="0.9" style="width:64px">
-    <span class="val" id="__COMPONENT_ID__-orbit-val">0.9</span>
+    <input type="range" id="__COMPONENT_ID__-orbit" min="0" max="5" step="0.1" value="0.4" style="width:64px">
+    <span class="val" id="__COMPONENT_ID__-orbit-val">0.4</span>
     <button class="theme-btn" id="__COMPONENT_ID__-theme">&#127769;</button>
   </div>
   </div>
@@ -276,7 +279,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x070714);
 
 const camera = new THREE.PerspectiveCamera(45, viewport.clientWidth / viewport.clientHeight, 0.1, 100);
-camera.position.set(4, 3, 4);
+camera.position.set(6, 4, 6);
 
 const renderer = new THREE.WebGLRenderer({
   canvas: threeCanvas,
@@ -290,14 +293,14 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.autoRotate = true;
-controls.autoRotateSpeed = 0.9;
+controls.autoRotateSpeed = 0.4;
 controls.target.set(0, 0, 0.5);
 controls.update();
 
 // ----- theme -----
 const wrapEl = document.getElementById(id+'-wrap');
 const themeBtn = document.getElementById(id+'-theme');
-let isDark = true;
+let isDark = DATA.is_dark !== undefined ? DATA.is_dark : true;
 
 function applyTheme(dark) {
   isDark = dark;
@@ -430,28 +433,30 @@ function makeLabelSprite(text) {
 }
 
 function addAxis(from, to, color, labelText) {
-  const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.4 });
+  const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.2 });
   const geo = new THREE.BufferGeometry().setFromPoints([
     new THREE.Vector3(from[0], from[1], from[2]),
     new THREE.Vector3(to[0], to[1], to[2]),
   ]);
   scene.add(new THREE.Line(geo, mat));
   const lbl = makeLabelSprite(labelText);
+  lbl.material.opacity = 0.3;
   lbl.position.set(to[0], to[1], to[2]);
   scene.add(lbl);
 }
 
-const axExt = 1.6;
+const axExt = 2.5;
 addAxis([-axExt, 0, 0], [axExt, 0, 0], 0x00d2ff, 'PC1');
 addAxis([0, -axExt, 0], [0, axExt, 0], 0x00d2ff, 'PC2');
 addAxis([0, 0, -0.1], [0, 0, 1.1], 0x00d2ff, 'Time');
 
 // grid helper
-const gridHelper = new THREE.GridHelper(4, 8, 0x444488, 0x222244);
+const gridHelper = new THREE.GridHelper(6, 12, 0x444488, 0x222244);
 gridHelper.position.y = -axExt;
 gridHelper.material.transparent = true;
 gridHelper.material.opacity = 0.25;
 scene.add(gridHelper);
+applyTheme(isDark);
 
 // ----- centroid color legend (2D canvas overlay) -----
 function buildLegend(container) {
@@ -761,10 +766,13 @@ orbitSlider.addEventListener('input', function() {
 initAudio();
 setTimeout(() => animate(), 100);
 
-window.addEventListener('resize', () => {
+// ResizeObserver for sidebar and container size changes
+const ro = new ResizeObserver(() => {
   clearTimeout(window._r3dResize);
-  window._r3dResize = setTimeout(() => animate(), 100);
+  window._r3dResize = setTimeout(() => animate(), 80);
 });
+ro.observe(viewport);
+ro.observe(document.getElementById(id+'-prof-wrap'));
 </script>
 
 <script>

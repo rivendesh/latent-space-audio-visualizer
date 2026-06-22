@@ -3,6 +3,8 @@ import numpy as np
 from sklearn.decomposition import PCA
 
 
+# Encodes audio into a 2D latent trajectory via mel-spectrogram → PCA pipeline.
+# Also extracts spectral centroid and RMS per frame for downstream visualisation.
 class LatentEncoder:
     def __init__(self, n_mels=128, hop_length=512, n_components=2):
         self.n_mels = n_mels
@@ -12,6 +14,8 @@ class LatentEncoder:
         self.latent_mean = None
         self.latent_std = None
 
+    # Compute mel spectrogram → PCA projection → z-score normalised latent points.
+    # Also returns per-frame timestamps, spectral centroid, and RMS energy.
     def encode(self, audio, sr):
         mel_spec = librosa.feature.melspectrogram(
             y=audio, sr=sr, n_mels=self.n_mels,
@@ -45,6 +49,8 @@ class LatentEncoder:
         return latent_points, times, centroids, rms
 
     @property
+    # Fraction of total variance captured by each PCA component.
+    # Returns None until fit() is called (first call to encode).
     def explained_variance_ratio(self):
         if self.pca is not None:
             return self.pca.explained_variance_ratio_.tolist()

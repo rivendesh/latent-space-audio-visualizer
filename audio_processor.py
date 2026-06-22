@@ -3,6 +3,8 @@ import librosa
 import numpy as np
 
 
+# Load audio from a file path, bytes, or BytesIO object.
+# Returns a mono float array resampled to `sr` (Hz) and the sample rate.
 def load_audio(file_or_path, sr=22050):
     if isinstance(file_or_path, bytes):
         file_or_path = io.BytesIO(file_or_path)
@@ -11,6 +13,8 @@ def load_audio(file_or_path, sr=22050):
     return audio, sr
 
 
+# Downsample the waveform to `n_peaks` min/max pairs for efficient canvas rendering
+# without aliasing. Each pair covers an equal-sized chunk of the audio.
 def compute_waveform_peaks(audio, n_peaks=2000):
     chunk_size = max(1, len(audio) // n_peaks)
     peaks = []

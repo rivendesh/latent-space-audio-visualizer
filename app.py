@@ -14,7 +14,7 @@ from realtime_component import build_realtime_component
 from realtime_3d import build_3d_component
 
 
-# ---------- CLI args ----------
+# ---------- CLI args: support --file / -f and AUDIO_FILE env var ----------
 def _parse_cli_args():
     parser = argparse.ArgumentParser(
         description="Audio Latent Space Visualizer",
@@ -50,10 +50,29 @@ if _AUTO_PATH is not None:
 
 st.set_page_config(page_title="Audio Latent Space Visualizer", layout="wide")
 
+# ---------- theme state: inject light/dark CSS before sidebar renders ----------
+if "app_theme" not in st.session_state:
+    st.session_state.app_theme = "Dark"
+
+is_dark = st.session_state.app_theme == "Dark"
+if not is_dark:
+    st.markdown("""
+    <style>
+    .stApp { background: #f0f2f5 !important; }
+    .stApp h1, .stApp h2, .stApp h3, .stApp .stMarkdown,
+    .stApp .stMetric label, .stApp .stMetric value,
+    .stApp .stTabs button {
+        color: #333 !important;
+    }
+    .stSidebar { background: #e8eaed !important; }
+    .stSidebar .stMarkdown { color: #333 !important; }
+    </style>
+    """, unsafe_allow_html=True)
+
 st.title("Audio Latent Space Visualizer")
 st.markdown("Upload an audio file to explore its waveform and 2D latent-space projection in real time.")
 
-# ---------- sidebar ----------
+# ---------- sidebar: file uploader, mel/hop/playback settings, theme selector ----------
 with st.sidebar:
     st.header("Controls")
     uploaded_file = st.file_uploader(
@@ -92,6 +111,12 @@ with st.sidebar:
     st.markdown("Also `AUDIO_FILE=song.wav streamlit run app.py`.")
 
     st.divider()
+    st.markdown("### Appearance")
+    sel = st.select_slider("Theme", options=["Dark", "Light"], value=st.session_state.app_theme, key="app_theme")
+    # update is_dark used below
+    is_dark = (sel == "Dark")
+
+    st.divider()
     st.markdown("### How it works")
     st.markdown(
         "The **latent space** is built by computing a mel-spectrogram over the entire "
@@ -99,7 +124,7 @@ with st.sidebar:
         "trajectory through the latent space that reveals the spectral evolution of the sound."
     )
 
-# ---------- plotting helpers ----------
+# ---------- Plotly figure builders for waveform, FFT, and latent-space scatter ----------
 _HIGH_RES_CONFIG = {
     "toImageButtonOptions": {
         "format": "png",
@@ -231,7 +256,7 @@ def _build_latent_figure(latent_points):
     return fig
 
 
-# ---------- processing ----------
+# ---------- processing: load audio, run encoder, compute waveform peaks ----------
 auto_file = st.session_state.get("auto_file")
 
 if uploaded_file is not None:
@@ -270,7 +295,7 @@ def _st_download_html(fig, filename, label):
     )
 
 
-# ---------- tabs ----------
+# ---------- tabs: Static Analysis | Real-Time Player | 3D Render ----------
 tab1, tab2, tab3 = st.tabs(["Static Analysis", "Real-Time Player", "3D Render"])
 
 with tab1:
@@ -298,7 +323,7 @@ with tab1:
         with dl_col3:
             _st_download_html(fft_fig, "frequency_spectrum.html", "Frequency Spectrum")
 
-# ---------- truncate for real-time player ----------
+# ---------- truncate audio and latent data to max_playback for the real-time tabs ----------
 max_samples = int(max_playback * sr)
 if len(audio) > max_samples:
     pb_audio = audio[:max_samples]
@@ -338,5 +363,6 @@ with tab3:
         latent_times=pb_times,
         centroids=pb_centroids,
         rms=pb_rms,
+        is_dark=is_dark,
     )
-    st.components.v1.html(html_3d, height=1200)
+    st.components.v1.html(html_3d, height=800)

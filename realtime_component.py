@@ -5,6 +5,8 @@ import uuid
 from audio_processor import audio_to_wav_bytes
 
 
+# Build a self-contained HTML/JS string with embedded audio and latent data
+# for the 2D real-time player tab. Returns raw HTML for st.components.v1.html.
 def build_realtime_component(audio, sr, latent_points, latent_times, waveform_peaks):
     wav_bytes = audio_to_wav_bytes(audio, sr)
     audio_b64 = base64.b64encode(wav_bytes).decode("ascii")
