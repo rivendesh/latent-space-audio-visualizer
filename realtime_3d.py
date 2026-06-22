@@ -290,7 +290,7 @@ _TEMPLATE = r"""
   </div>
 
   <div class="__COMPONENT_ID__-controls">
-    <button id="__COMPONENT_ID__-play">&#9654; Play</button>
+    <button id="__COMPONENT_ID__-play">&#9654;</button>
     <input type="range" class="__COMPONENT_ID__-seek" id="__COMPONENT_ID__-seek" min="0" max="1000" value="0">
     <span class="time" id="__COMPONENT_ID__-time">0:00 / 0:00</span>
   </div>
@@ -802,13 +802,11 @@ function drawProfile(t) {
 
   var n = DATA.centroids.length;
 
-  // all data points, coloured by distance from centroid mean
+  // all data points, coloured by time position (matches 3D node colors)
   for (var i = 0; i < n; i++) {
     var cx = toX(DATA.centroids[i]);
     var cy = toY(DATA.rms[i]);
-    var z = (DATA.centroids[i] - DATA.centroid_mean) / (DATA.centroid_std || 1);
-    var cf = Math.max(0, Math.min(1, 0.5 + z / 6));
-    var col = pathColor(cf);
+    var col = pathColor(i / (n - 1));
     ctx.beginPath();
     ctx.arc(cx, cy, 2, 0, Math.PI*2);
     ctx.fillStyle = 'rgba(' + (col[0]<<0) + ',' + (col[1]<<0) + ',' + (col[2]<<0) + ',0.5)';
@@ -877,7 +875,7 @@ function createSource() {
     if (isPlaying && myGen === sourceGen) {
       isPlaying = false;
       pausedAt = DATA.duration;
-      playBtn.innerHTML = '&#9654; Play';
+      playBtn.innerHTML = '&#9654;';
     }
   };
   return s;
@@ -892,7 +890,7 @@ function play() {
   source.start(0, pausedAt);
   startTime = audioCtx.currentTime;
   isPlaying = true;
-  playBtn.innerHTML = '&#9646;&#9646; Pause';
+  playBtn.innerHTML = '&#9208;';
   if (!animId) animate();
 }
 
@@ -904,7 +902,7 @@ function pause() {
     source = null;
   }
   isPlaying = false;
-  playBtn.innerHTML = '&#9654; Play';
+  playBtn.innerHTML = '&#9654;';
 }
 
 function togglePlay() {
@@ -991,7 +989,7 @@ function animate() {
   if (t >= DATA.duration) {
     if (isPlaying) {
       isPlaying = false;
-      playBtn.innerHTML = '&#9654; Play';
+      playBtn.innerHTML = '&#9654;';
     }
     pausedAt = DATA.duration;
   }

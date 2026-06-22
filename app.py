@@ -57,7 +57,7 @@ st.markdown("""
 <style>
 div[data-testid="stTabContent"] > div {
     overflow-y: auto;
-    max-height: 3000px;
+    max-height: none;
 }
 section[data-testid="stSidebar"] .stMarkdown p { word-break: break-word; overflow-wrap: break-word; }
 section[data-testid="stSidebar"] .stMarkdown code { word-break: break-all; white-space: pre-wrap; }
@@ -355,4 +355,4 @@ with tab3:
         rms=pb_rms,
         waveform_peaks=pb_peaks,
     )
-    st.components.v1.html(html_3d, height=2240)
+    st.components.v1.html(html_3d, height=3500)
