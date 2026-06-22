@@ -325,17 +325,17 @@ _TEMPLATE = r"""
     <input type="range" id="__COMPONENT_ID__-speed" min="0.25" max="3" step="0.25" value="1" style="width:56px">
     <span class="val" id="__COMPONENT_ID__-speed-val">1x</span>
     <label>Orbit</label>
-    <input type="range" id="__COMPONENT_ID__-orbit" min="-0.4" max="0.4" step="0.05" value="0.2" style="width:56px">
-    <span class="val" id="__COMPONENT_ID__-orbit-val">0.2</span>
+    <input type="range" id="__COMPONENT_ID__-orbit" min="-0.4" max="0.4" step="0.05" value="0.1" style="width:56px">
+    <span class="val" id="__COMPONENT_ID__-orbit-val">0.10</span>
     <label>Stretch</label>
-    <input type="range" id="__COMPONENT_ID__-stretch" min="0.5" max="6" step="0.1" value="1" style="width:56px">
-    <span class="val" id="__COMPONENT_ID__-stretch-val">1</span>
+    <input type="range" id="__COMPONENT_ID__-stretch" min="0.5" max="6" step="0.1" value="3.5" style="width:56px">
+    <span class="val" id="__COMPONENT_ID__-stretch-val">3.5</span>
     <label>Slc</label>
     <input type="range" id="__COMPONENT_ID__-slices" min="0" max="10" value="5" style="width:56px">
     <span class="val" id="__COMPONENT_ID__-slices-val">5</span>
     <label>Op</label>
-    <input type="range" id="__COMPONENT_ID__-slice-op" min="0" max="100" value="20" style="width:56px">
-    <span class="val" id="__COMPONENT_ID__-slice-op-val">20</span>
+    <input type="range" id="__COMPONENT_ID__-slice-op" min="0" max="100" value="5" style="width:56px">
+    <span class="val" id="__COMPONENT_ID__-slice-op-val">5</span>
     <label>Zoom</label>
     <input type="range" id="__COMPONENT_ID__-zoom" min="5" max="50" value="15" style="width:56px">
     <span class="val" id="__COMPONENT_ID__-zoom-val">1.5</span>
@@ -417,13 +417,14 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.autoRotate = true;
-controls.autoRotateSpeed = 0.2;
+controls.autoRotateSpeed = 0.1;
 controls.target.set(0, 0, 0.5);
 controls.update();
 
 // Data group for time-axis stretching
 const dataGroup = new THREE.Group();
 scene.add(dataGroup);
+dataGroup.scale.z = 3.5;
 
 // ----- theme -----
 const wrapEl = document.getElementById(id+'-wrap');
@@ -617,7 +618,7 @@ dataGroup.add(timePlaneGroup);
 const timePlaneMat = new THREE.MeshBasicMaterial({
   color: 0x6666aa,
   transparent: true,
-  opacity: 0.06,
+  opacity: 0.05,
   side: THREE.DoubleSide,
   depthWrite: false,
 });
