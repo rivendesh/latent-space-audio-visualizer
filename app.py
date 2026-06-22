@@ -1,14 +1,55 @@
+import argparse
+import os
+import sys
+from pathlib import Path
+
 import streamlit as st
 import plotly.graph_objects as go
 import numpy as np
+import librosa
 
 from audio_processor import load_audio, compute_waveform_peaks
 from latent_encoder import LatentEncoder
 from realtime_component import build_realtime_component
 
-st.set_page_config(page_title="Audio Latent Space Visualizer", page_icon="🎵", layout="wide")
 
-st.title("🎵 Audio Latent Space Visualizer")
+# ---------- CLI args ----------
+def _parse_cli_args():
+    parser = argparse.ArgumentParser(
+        description="Audio Latent Space Visualizer",
+        add_help=False,
+    )
+    parser.add_argument("--file", "-f", type=str, default=None)
+    try:
+        args, _ = parser.parse_known_args()
+    except SystemExit:
+        args = argparse.Namespace(file=None)
+    return args
+
+
+CLI_ARGS = _parse_cli_args()
+
+_AUTO_PATH = None
+if CLI_ARGS.file:
+    _AUTO_PATH = Path(CLI_ARGS.file)
+elif os.environ.get("AUDIO_FILE"):
+    _AUTO_PATH = Path(os.environ["AUDIO_FILE"])
+
+if _AUTO_PATH is not None:
+    if _AUTO_PATH.exists():
+        st.session_state.setdefault("auto_file", _AUTO_PATH.read_bytes())
+        st.session_state.setdefault("auto_file_name", _AUTO_PATH.name)
+        st.session_state.setdefault("auto_file_path", str(_AUTO_PATH.resolve()))
+    else:
+        msg = f"File not found: {_AUTO_PATH}"
+        if CLI_ARGS.file:
+            st.error(msg)
+        else:
+            st.warning(f"AUDIO_FILE={_AUTO_PATH} not found")
+
+st.set_page_config(page_title="Audio Latent Space Visualizer", layout="wide")
+
+st.title("Audio Latent Space Visualizer")
 st.markdown("Upload an audio file to explore its waveform and 2D latent-space projection in real time.")
 
 # ---------- sidebar ----------
@@ -19,12 +60,35 @@ with st.sidebar:
         type=["wav", "mp3", "flac", "ogg", "m4a", "aiff"],
     )
 
+    if uploaded_file is None and "auto_file" in st.session_state:
+        st.success(f"Loaded: {st.session_state['auto_file_name']}")
+
     st.divider()
     st.markdown("### Settings")
     n_mels = st.slider("Mel bands", 32, 256, 128, 32,
-                       help="Number of mel-frequency bands used for feature extraction.")
+                       help="Number of mel-frequency bands fed into PCA. "
+                            "More bands (128-256) capture finer spectral detail "
+                            "but produce a noisier, higher-dimensional latent trajectory. "
+                            "Fewer bands (32-64) smooth out the trajectory, "
+                            "revealing only the coarsest timbral shifts.")
     hop_length = st.slider("Hop length", 128, 2048, 512, 128,
-                           help="Step size (in samples) between analysis frames.  Lower = higher temporal resolution.")
+                           help="Sample distance between consecutive analysis frames. "
+                                "Smaller values (128-256) yield a dense, high-resolution "
+                                "latent path at the cost of more PCA points. "
+                                "Larger values (1024-2048) produce a coarser, faster-to-compute "
+                                "trajectory. Use low hop for percussive/quickly-changing audio, "
+                                "high hop for steady drones or long samples.")
+
+    max_playback = st.slider("Max playback (s)", 10, 600, 120, 10,
+                             help="Long audio is truncated to this duration for the "
+                                  "Real-Time Player to stay within Streamlit's 200 MB "
+                                  "message size limit.  The Static Analysis tab always "
+                                  "uses the full file.")
+
+    st.divider()
+    st.markdown("### Launch with a file")
+    st.code("streamlit run app.py -- -f song.wav", language="bash")
+    st.markdown("Also `AUDIO_FILE=song.wav streamlit run app.py`.")
 
     st.divider()
     st.markdown("### How it works")
@@ -34,12 +98,148 @@ with st.sidebar:
         "trajectory through the latent space that reveals the spectral evolution of the sound."
     )
 
-# ---------- processing ----------
-if uploaded_file is None:
-    st.info("Upload an audio file in the sidebar to get started.", icon="🎤")
-    st.stop()
+# ---------- plotting helpers ----------
+_HIGH_RES_CONFIG = {
+    "toImageButtonOptions": {
+        "format": "png",
+        "width": 3840,
+        "height": 2160,
+        "scale": 2,
+    },
+    "displayModeBar": True,
+    "modeBarButtonsToRemove": ["lasso2d", "select2d"],
+}
 
-file_bytes = uploaded_file.read()
+
+def _build_waveform_figure(audio, sr):
+    t_axis = np.arange(len(audio)) / sr
+    dur = len(audio) / sr
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=t_axis,
+        y=audio,
+        mode="lines",
+        line=dict(color="rgba(0,210,255,0.5)", width=1),
+        fill="tozeroy",
+        fillcolor="rgba(0,210,255,0.06)",
+        name="Waveform",
+    ))
+
+    fig.update_layout(
+        title="Waveform",
+        xaxis_title="Time (s)",
+        yaxis_title="Amplitude",
+        height=180,
+        margin=dict(l=0, r=0, t=36, b=0),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#ccc", size=10),
+        xaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)"),
+        yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)"),
+        hovermode="x",
+    )
+    fig.update_xaxes(range=[0, dur])
+    return fig
+
+
+def _build_fft_figure(audio, sr):
+    n_fft = 2048
+    hop_length = n_fft // 4
+    S = np.abs(librosa.stft(audio, n_fft=n_fft, hop_length=hop_length))
+    avg_mag = np.mean(S, axis=1)
+    avg_mag_db = librosa.amplitude_to_db(avg_mag, ref=np.max)
+    freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=freqs,
+        y=avg_mag_db,
+        mode="lines",
+        line=dict(color="#ff6b6b", width=1),
+        fill="tozeroy",
+        fillcolor="rgba(255,107,107,0.08)",
+        name="Avg Spectrum",
+    ))
+
+    fig.update_layout(
+        title="Frequency Spectrum",
+        xaxis_title="Frequency (Hz)",
+        yaxis_title="Magnitude (dB)",
+        height=180,
+        margin=dict(l=0, r=0, t=36, b=0),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#ccc", size=10),
+        xaxis=dict(
+            showgrid=True,
+            gridcolor="rgba(255,255,255,0.05)",
+            type="log",
+            range=[np.log10(20), np.log10(sr / 2)],
+        ),
+        yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)"),
+        hovermode="x",
+    )
+    return fig
+
+
+def _build_latent_figure(latent_points):
+    n = len(latent_points)
+    t_frac = np.linspace(0, 1, n) if n > 1 else np.array([0])
+    colors = [[0, "rgb(0,210,255)"], [0.5, "rgb(123,47,247)"], [1, "rgb(255,107,107)"]]
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Scatter(
+        x=latent_points[:, 0],
+        y=latent_points[:, 1],
+        mode="lines",
+        line=dict(color="rgba(255,255,255,0.12)", width=2),
+        showlegend=False,
+        hoverinfo="skip",
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=latent_points[:, 0],
+        y=latent_points[:, 1],
+        mode="markers",
+        marker=dict(
+            size=4,
+            color=t_frac,
+            colorscale=colors,
+            showscale=True,
+            colorbar=dict(title="Time", len=0.6, x=1.02),
+            line=dict(width=0),
+        ),
+        name="Trajectory",
+    ))
+
+    fig.update_layout(
+        title="Latent Space (2D PCA projection)",
+        xaxis_title="Component 1",
+        yaxis_title="Component 2",
+        height=480,
+        margin=dict(l=0, r=0, t=40, b=0),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#ccc"),
+        xaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)", scaleanchor="y"),
+        yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)"),
+        hovermode="closest",
+    )
+    return fig
+
+
+# ---------- processing ----------
+auto_file = st.session_state.get("auto_file")
+
+if uploaded_file is not None:
+    file_bytes = uploaded_file.read()
+elif auto_file is not None:
+    file_bytes = auto_file
+else:
+    st.info("Upload an audio file in the sidebar to get started.")
+    st.stop()
 
 with st.spinner("Processing audio …"):
     audio, sr = load_audio(file_bytes)
@@ -56,159 +256,71 @@ col_m2.metric("Sample Rate", f"{sr} Hz")
 col_m3.metric("Latent Frames", f"{len(latent_points)}")
 col_m4.metric("Expl. Variance (2D)", f"{sum(encoder.explained_variance_ratio):.1%}" if encoder.explained_variance_ratio else "—")
 
-# ---------- tabs ----------
-tab1, tab2 = st.tabs(["📊 Static Analysis", "🎬 Real-Time Player"])
-
-with tab1:
-    t = st.slider(
-        "Time (seconds)",
-        min_value=0.0,
-        max_value=duration,
-        value=0.0,
-        step=0.05,
-        key="static_time",
+# ---------- download helper ----------
+def _st_download_html(fig, filename, label):
+    import plotly.io as pio
+    html_str = pio.to_html(fig, include_plotlyjs="cdn", full_html=False)
+    st.download_button(
+        label=f"Download {label}",
+        data=html_str,
+        file_name=filename,
+        mime="text/html",
+        width='stretch',
     )
 
-    col_left, col_right = st.columns(2)
 
-    with col_left:
-        wave_fig = _build_waveform_figure(audio, sr, t)
-        st.plotly_chart(wave_fig, use_container_width=True)
+# ---------- tabs ----------
+tab1, tab2 = st.tabs(["Static Analysis", "Real-Time Player"])
 
-    with col_right:
-        latent_fig = _build_latent_figure(latent_points, latent_times, t)
-        st.plotly_chart(latent_fig, use_container_width=True)
+with tab1:
+    latent_fig = _build_latent_figure(latent_points)
+    st.plotly_chart(latent_fig, config=_HIGH_RES_CONFIG, width='stretch')
+
+    col_wave, col_fft = st.columns(2)
+
+    with col_wave:
+        wave_fig = _build_waveform_figure(audio, sr)
+        st.plotly_chart(wave_fig, config=_HIGH_RES_CONFIG, width='stretch')
+
+    with col_fft:
+        fft_fig = _build_fft_figure(audio, sr)
+        st.plotly_chart(fft_fig, config=_HIGH_RES_CONFIG, width='stretch')
 
     st.audio(file_bytes)
 
+    with st.expander("Download plots", expanded=False):
+        dl_col1, dl_col2, dl_col3 = st.columns(3)
+        with dl_col1:
+            _st_download_html(latent_fig, "latent_space.html", "Latent Space")
+        with dl_col2:
+            _st_download_html(wave_fig, "waveform.html", "Waveform")
+        with dl_col3:
+            _st_download_html(fft_fig, "frequency_spectrum.html", "Frequency Spectrum")
+
+# ---------- truncate for real-time player ----------
+max_samples = int(max_playback * sr)
+if len(audio) > max_samples:
+    pb_audio = audio[:max_samples]
+    pb_n = np.searchsorted(latent_times, max_playback) + 1
+    pb_latent = latent_points[:pb_n]
+    pb_times = latent_times[:pb_n]
+    pb_peaks = compute_waveform_peaks(pb_audio)
+    st.caption(
+        f"Real-Time Player uses the first {max_playback}s "
+        f"({pb_n} frames) of {duration:.0f}s total."
+    )
+else:
+    pb_audio = audio
+    pb_latent = latent_points
+    pb_times = latent_times
+    pb_peaks = waveform_peaks
+
 with tab2:
-    st.markdown(
-        "Press **Play** to hear the audio while the waveform and latent-space "
-        "visualizations update in real time."
-    )
-
     html = build_realtime_component(
-        audio=audio,
+        audio=pb_audio,
         sr=sr,
-        latent_points=latent_points,
-        latent_times=latent_times,
-        waveform_peaks=waveform_peaks,
+        latent_points=pb_latent,
+        latent_times=pb_times,
+        waveform_peaks=pb_peaks,
     )
-    st.components.v1.html(html, height=620)
-
-
-# ---------- plotting helpers ----------
-def _build_waveform_figure(audio, sr, current_time):
-    t_axis = np.arange(len(audio)) / sr
-    duration = len(audio) / sr
-
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=t_axis,
-        y=audio,
-        mode="lines",
-        line=dict(color="rgba(0,210,255,0.6)", width=1),
-        fill="tozeroy",
-        fillcolor="rgba(0,210,255,0.08)",
-        name="Waveform",
-    ))
-
-    # cursor
-    cursor_idx = int(current_time * sr)
-    cursor_idx = min(cursor_idx, len(audio) - 1)
-    fig.add_vline(
-        x=current_time,
-        line=dict(color="white", width=2, dash="solid"),
-        annotation_text=f"{current_time:.2f}s",
-        annotation_position="top right",
-    )
-
-    fig.update_layout(
-        title="Waveform",
-        xaxis_title="Time (s)",
-        yaxis_title="Amplitude",
-        height=280,
-        margin=dict(l=0, r=0, t=40, b=0),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#ccc"),
-        xaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)"),
-        yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)"),
-        hovermode="x",
-    )
-    fig.update_xaxes(range=[0, duration])
-    return fig
-
-
-def _build_latent_figure(latent_points, latent_times, current_time):
-    n = len(latent_points)
-    t_frac = np.linspace(0, 1, n) if n > 1 else np.array([0])
-    colors = [[0, "rgb(0,210,255)"], [0.5, "rgb(123,47,247)"], [1, "rgb(255,107,107)"]]
-
-    fig = go.Figure()
-
-    # trajectory line
-    fig.add_trace(go.Scatter(
-        x=latent_points[:, 0],
-        y=latent_points[:, 1],
-        mode="lines",
-        line=dict(color="rgba(255,255,255,0.15)", width=2),
-        showlegend=False,
-        hoverinfo="skip",
-    ))
-
-    # trajectory markers colored by time
-    fig.add_trace(go.Scatter(
-        x=latent_points[:, 0],
-        y=latent_points[:, 1],
-        mode="markers",
-        marker=dict(
-            size=4,
-            color=t_frac,
-            colorscale=colors,
-            showscale=True,
-            colorbar=dict(title="Time", len=0.6, x=1.02),
-            line=dict(width=0),
-        ),
-        name="Trajectory",
-    ))
-
-    # current position
-    cur_pos = _interpolate_latent(latent_points, latent_times, current_time)
-    fig.add_trace(go.Scatter(
-        x=[cur_pos[0]],
-        y=[cur_pos[1]],
-        mode="markers",
-        marker=dict(size=14, color="#ffd700", line=dict(width=2, color="#fff")),
-        name=f"t = {current_time:.2f}s",
-    ))
-
-    fig.update_layout(
-        title="Latent Space (2D PCA projection)",
-        xaxis_title="Component 1",
-        yaxis_title="Component 2",
-        height=280,
-        margin=dict(l=0, r=0, t=40, b=0),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#ccc"),
-        xaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)", scaleanchor="y"),
-        yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)"),
-        hovermode="closest",
-    )
-    return fig
-
-
-def _interpolate_latent(points, times, t):
-    n = len(times)
-    if n == 0:
-        return [0, 0]
-    if t <= times[0]:
-        return points[0]
-    if t >= times[-1]:
-        return points[-1]
-    idx = np.searchsorted(times, t) - 1
-    idx = max(0, min(idx, n - 2))
-    t0, t1 = times[idx], times[idx + 1]
-    frac = (t - t0) / (t1 - t0 + 1e-10)
-    return points[idx] + frac * (points[idx + 1] - points[idx])
+    st.components.v1.html(html, height=680)
