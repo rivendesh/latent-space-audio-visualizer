@@ -316,10 +316,13 @@ _TEMPLATE = r"""
     <label>Zoom</label>
     <input type="range" id="__COMPONENT_ID__-zoom" min="5" max="50" value="15" style="width:56px">
     <span class="val" id="__COMPONENT_ID__-zoom-val">1.5</span>
+    <label>Fade</label>
+    <input type="range" id="__COMPONENT_ID__-fade" min="5" max="100" step="5" value="30" style="width:56px">
+    <span class="val" id="__COMPONENT_ID__-fade-val">3.0</span>
     <label>Pan</label>
     <select id="__COMPONENT_ID__-pan-mode" style="background:var(--bg2);color:var(--text);border:1px solid var(--text-muted);border-radius:4px;font-size:11px;padding:2px 4px;width:66px;">
       <option value="midpoint">Midpoint</option>
-      <option value="head">Head</option>
+      <option value="node">Node</option>
       <option value="none">None</option>
     </select>
   </div>
@@ -380,6 +383,7 @@ let currentSpeed = 1.0;
 let currentVol = 0.75;
 let sourceGen = 0;
 let panMode = 'midpoint';
+let fadeExp = 3.0;
 
 // ----- Three.js -----
 const scene = new THREE.Scene();
@@ -931,10 +935,10 @@ function animate() {
   // Update point draw range
   pointGeo.setDrawRange(0, drawCount);
 
-  // Per-point recency scaling (matches 2D Player: quadratic falloff)
+  // Per-point recency scaling (matches 2D Player: fadeExp-controlled falloff)
   for (var i = 0; i < drawCount; i++) {
-    var recency = Math.pow((i + 1) / (drawCount || 1), 2);
-    sizeArr[i] = 0.08 + 0.16 * recency;
+    var recency = Math.pow((i + 1) / (drawCount || 1), fadeExp);
+    sizeArr[i] = 0.06 + 0.4 * recency;
     alphaArr[i] = 0.3 + 0.7 * recency;
   }
   for (var i = drawCount; i < n; i++) {
@@ -947,22 +951,24 @@ function animate() {
   // Update trajectory line
   lineGeo.setDrawRange(0, Math.max(0, drawCount - 1));
 
-  // Track the pan target — running midpoint, head node, or none (fixed).
+  // Track the pan target — running midpoint, node (head), or none (fixed).
   if (drawCount > 0 && panMode !== 'none') {
     var tx, ty, tz;
-    if (panMode === 'head') {
+    if (panMode === 'node') {
       tx = points3d[drawCount - 1][0];
       ty = points3d[drawCount - 1][1];
       tz = points3d[drawCount - 1][2];
+      tz *= dataGroup.scale.z;
+      controls.target.set(tx, ty, tz);
     } else {
       tx = prefX[drawCount - 1] / drawCount;
       ty = prefY[drawCount - 1] / drawCount;
       tz = prefZ[drawCount - 1] / drawCount;
+      tz *= dataGroup.scale.z;
+      controls.target.x += (tx - controls.target.x) * 0.12;
+      controls.target.y += (ty - controls.target.y) * 0.12;
+      controls.target.z += (tz - controls.target.z) * 0.12;
     }
-    tz *= dataGroup.scale.z;
-    controls.target.x += (tx - controls.target.x) * 0.12;
-    controls.target.y += (ty - controls.target.y) * 0.12;
-    controls.target.z += (tz - controls.target.z) * 0.12;
   }
   controls.update();
 
@@ -1063,15 +1069,14 @@ zoomSlider.addEventListener('input', function() {
 const panSelect = document.getElementById(id+'-pan-mode');
 panSelect.addEventListener('change', function() {
   panMode = this.value;
-  if (panMode === 'head') {
-    camera.zoom = 2.0;
-    zoomVal.textContent = '2.0';
-  } else {
-    camera.zoom = 1.5;
-    zoomVal.textContent = '1.5';
-  }
-  camera.updateProjectionMatrix();
-  zoomSlider.value = Math.round(camera.zoom * 10);
+});
+
+const fadeSlider = document.getElementById(id+'-fade');
+const fadeVal = document.getElementById(id+'-fade-val');
+fadeSlider.addEventListener('input', function() {
+  const v = parseFloat(this.value);
+  fadeExp = v / 10;
+  fadeVal.textContent = fadeExp.toFixed(1);
 });
 
 // ----- fullscreen toggle (targets inner wrapper to include controls) -----
