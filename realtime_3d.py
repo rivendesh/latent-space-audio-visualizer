@@ -316,6 +316,11 @@ _TEMPLATE = r"""
     <label>Zoom</label>
     <input type="range" id="__COMPONENT_ID__-zoom" min="5" max="50" value="15" style="width:56px">
     <span class="val" id="__COMPONENT_ID__-zoom-val">1.5</span>
+    <label>Pan</label>
+    <select id="__COMPONENT_ID__-pan-mode" style="background:var(--bg2);color:var(--text);border:1px solid var(--text-muted);border-radius:4px;font-size:11px;padding:2px 4px;width:66px;">
+      <option value="midpoint">Midpoint</option>
+      <option value="head">Head</option>
+    </select>
   </div>
   </div>
 </div>
@@ -373,6 +378,7 @@ let animId = null;
 let currentSpeed = 1.0;
 let currentVol = 0.75;
 let sourceGen = 0;
+let panMode = 'midpoint';
 
 // ----- Three.js -----
 const scene = new THREE.Scene();
@@ -437,23 +443,6 @@ function lerpColor(a, b, t) {
 function pathColor(t) {
   if (t < 0.5) return lerpColor(C_START, C_MID, t * 2);
   return lerpColor(C_MID, C_END, (t - 0.5) * 2);
-}
-// Centroid-based color map for the profile chart (deep blue → cyan → yellow → hot red)
-function centroidColor(t) {
-  t = Math.max(0, Math.min(1, t));
-  if (t < 0.25) {
-    const u = t / 0.25;
-    return [0.05, 0.05 + 0.35*u, 0.5 + 0.5*u];
-  } else if (t < 0.5) {
-    const u = (t - 0.25) / 0.25;
-    return [0, 0.4 + 0.6*u, 1.0 - 0.3*u];
-  } else if (t < 0.75) {
-    const u = (t - 0.5) / 0.25;
-    return [0.8*u, 1.0 - 0.5*u, 0.7 - 0.7*u];
-  } else {
-    const u = (t - 0.75) / 0.25;
-    return [0.8 + 0.2*u, 0.5 - 0.4*u, 0];
-  }
 }
 
 const points3d = DATA.points_3d;
@@ -543,11 +532,12 @@ for (let i = 0; i < n; i++) {
 }
 const lineGeo = new THREE.BufferGeometry();
 lineGeo.setAttribute('position', new THREE.BufferAttribute(linePos, 3));
+lineGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(colArr), 3));
 lineGeo.setDrawRange(0, 0);
 const lineMat = new THREE.LineBasicMaterial({
-  color: 0x00d2ff,
+  vertexColors: true,
   transparent: true,
-  opacity: 0.3,
+  opacity: 0.4,
 });
 const line = new THREE.Line(lineGeo, lineMat);
 dataGroup.add(line);
@@ -814,10 +804,10 @@ function drawProfile(t) {
     var cy = toY(DATA.rms[i]);
     var z = (DATA.centroids[i] - DATA.centroid_mean) / (DATA.centroid_std || 1);
     var cf = Math.max(0, Math.min(1, 0.5 + z / 6));
-    var col = centroidColor(cf);
+    var col = pathColor(cf);
     ctx.beginPath();
     ctx.arc(cx, cy, 2, 0, Math.PI*2);
-    ctx.fillStyle = 'rgba(' + ((col[0]*255)<<0) + ',' + ((col[1]*255)<<0) + ',' + ((col[2]*255)<<0) + ',0.5)';
+    ctx.fillStyle = 'rgba(' + (col[0]<<0) + ',' + (col[1]<<0) + ',' + (col[2]<<0) + ',0.5)';
     ctx.fill();
   }
 
@@ -943,7 +933,7 @@ function animate() {
   // Per-point recency scaling (matches 2D Player: quadratic falloff)
   for (var i = 0; i < drawCount; i++) {
     var recency = Math.pow((i + 1) / (drawCount || 1), 2);
-    sizeArr[i] = 0.06 + 0.12 * recency;
+    sizeArr[i] = 0.08 + 0.16 * recency;
     alphaArr[i] = 0.3 + 0.7 * recency;
   }
   for (var i = drawCount; i < n; i++) {
@@ -956,15 +946,21 @@ function animate() {
   // Update trajectory line
   lineGeo.setDrawRange(0, Math.max(0, drawCount - 1));
 
-  // Track running midpoint of the drawn segment so the camera
-  // smoothly pans toward the centre of the revealed points.
+  // Track the pan target — either running midpoint or the most recent node.
   if (drawCount > 0) {
-    const mX = prefX[drawCount - 1] / drawCount;
-    const mY = prefY[drawCount - 1] / drawCount;
-    const mZ = prefZ[drawCount - 1] / drawCount;
-    controls.target.x += (mX - controls.target.x) * 0.06;
-    controls.target.y += (mY - controls.target.y) * 0.06;
-    controls.target.z += (mZ - controls.target.z) * 0.06;
+    var tx, ty, tz;
+    if (panMode === 'head') {
+      tx = points3d[drawCount - 1][0];
+      ty = points3d[drawCount - 1][1];
+      tz = points3d[drawCount - 1][2];
+    } else {
+      tx = prefX[drawCount - 1] / drawCount;
+      ty = prefY[drawCount - 1] / drawCount;
+      tz = prefZ[drawCount - 1] / drawCount;
+    }
+    controls.target.x += (tx - controls.target.x) * 0.06;
+    controls.target.y += (ty - controls.target.y) * 0.06;
+    controls.target.z += (tz - controls.target.z) * 0.06;
   }
   controls.update();
 
@@ -1060,6 +1056,11 @@ zoomSlider.addEventListener('input', function() {
   zoomVal.textContent = (v / 10).toFixed(1);
   camera.zoom = v / 10;
   camera.updateProjectionMatrix();
+});
+
+const panSelect = document.getElementById(id+'-pan-mode');
+panSelect.addEventListener('change', function() {
+  panMode = this.value;
 });
 
 // ----- fullscreen toggle (targets inner wrapper to include controls) -----
