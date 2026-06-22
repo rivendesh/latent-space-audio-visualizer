@@ -50,26 +50,7 @@ if _AUTO_PATH is not None:
 
 st.set_page_config(page_title="Audio Latent Space Visualizer", layout="wide")
 
-# ---------- theme state: inject light/dark CSS before sidebar renders ----------
-if "app_theme" not in st.session_state:
-    st.session_state.app_theme = "Dark"
-
-is_dark = st.session_state.app_theme == "Dark"
-if not is_dark:
-    st.markdown("""
-    <style>
-    .stApp { background: #f0f2f5 !important; }
-    .stApp h1, .stApp h2, .stApp h3, .stApp .stMarkdown,
-    .stApp .stMetric label, .stApp .stMetric value,
-    .stApp .stTabs button {
-        color: #333 !important;
-    }
-    .stSidebar { background: #e8eaed !important; }
-    .stSidebar .stMarkdown { color: #333 !important; }
-    .stSidebar .stMarkdown p { word-break: break-word; overflow-wrap: break-word; }
-    .stSidebar .stMarkdown code { word-break: break-all; white-space: pre-wrap; }
-    </style>
-    """, unsafe_allow_html=True)
+# ---------- inject global CSS ----------
 
 # Scrollable tab content
 st.markdown("""
@@ -78,6 +59,8 @@ div[data-testid="stTabContent"] > div {
     overflow-y: auto;
     max-height: calc(100vh - 200px);
 }
+section[data-testid="stSidebar"] .stMarkdown p { word-break: break-word; overflow-wrap: break-word; }
+section[data-testid="stSidebar"] .stMarkdown code { word-break: break-all; white-space: pre-wrap; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -121,12 +104,6 @@ with st.sidebar:
     st.markdown("### Launch with a file")
     st.code("streamlit run app.py -- -f song.wav", language="bash")
     st.markdown("Also `AUDIO_FILE=song.wav streamlit run app.py`.")
-
-    st.divider()
-    st.markdown("### Appearance")
-    sel = st.select_slider("Theme", options=["Dark", "Light"], value=st.session_state.app_theme, key="app_theme")
-    # update is_dark used below
-    is_dark = (sel == "Dark")
 
     st.divider()
     st.markdown("### How it works")
@@ -376,6 +353,5 @@ with tab3:
         centroids=pb_centroids,
         rms=pb_rms,
         waveform_peaks=pb_peaks,
-        is_dark=is_dark,
     )
     st.components.v1.html(html_3d, height=1100)

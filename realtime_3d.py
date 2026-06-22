@@ -7,7 +7,7 @@ from audio_processor import audio_to_wav_bytes
 
 # Serialise audio + latent data into a self-contained HTML string with Three.js.
 # Returns an <iframe>-ready component embedding a 3D latent-space viewer.
-def build_3d_component(audio, sr, latent_points, latent_times, centroids, rms, waveform_peaks, is_dark=True):
+def build_3d_component(audio, sr, latent_points, latent_times, centroids, rms, waveform_peaks):
     wav_bytes = audio_to_wav_bytes(audio, sr)
     audio_b64 = base64.b64encode(wav_bytes).decode("ascii")
 
@@ -39,7 +39,6 @@ def build_3d_component(audio, sr, latent_points, latent_times, centroids, rms, w
         "duration": float(len(audio) / sr),
         "audio_b64": audio_b64,
         "sr": sr,
-        "is_dark": is_dark,
         "waveform_peaks": waveform_peaks,
     }
 
@@ -70,16 +69,6 @@ _TEMPLATE = r"""
     height: 100%;
     box-sizing: border-box;
     color: var(--text);
-  }
-  #__COMPONENT_ID__-wrap.light {
-    --bg: #f0f2f5;
-    --bg2: #ffffff;
-    --text: #333;
-    --text-strong: #111;
-    --text-muted: #777;
-    --text-label: #666;
-    --range-bg: #ccc;
-    --accent: #0066cc;
   }
   #__COMPONENT_ID__-inner {
     display: flex;
@@ -143,21 +132,6 @@ _TEMPLATE = r"""
     font-weight: 700;
     font-size: 15px;
     min-width: 84px;
-  }
-  .__COMPONENT_ID__-controls .theme-btn {
-    background: none;
-    border: 1px solid var(--text-muted);
-    color: var(--text-muted);
-    min-width: auto;
-    padding: 6px 10px;
-    font-size: 16px;
-    line-height: 1;
-    border-radius: 6px;
-    cursor: pointer;
-  }
-  .__COMPONENT_ID__-controls .theme-btn:hover {
-    border-color: var(--text-strong);
-    color: var(--text-strong);
   }
   .__COMPONENT_ID__-controls input[type=range] {
     height: 4px;
@@ -315,7 +289,6 @@ _TEMPLATE = r"""
     <button id="__COMPONENT_ID__-play">&#9654; Play</button>
     <input type="range" class="__COMPONENT_ID__-seek" id="__COMPONENT_ID__-seek" min="0" max="1000" value="0">
     <span class="time" id="__COMPONENT_ID__-time">0:00 / 0:00</span>
-    <button class="theme-btn" id="__COMPONENT_ID__-theme">&#127769;</button>
   </div>
   <div class="__COMPONENT_ID__-slider-row">
     <label>Vol</label>
@@ -425,32 +398,6 @@ controls.update();
 const dataGroup = new THREE.Group();
 scene.add(dataGroup);
 dataGroup.scale.z = 3.5;
-
-// ----- theme -----
-const wrapEl = document.getElementById(id+'-wrap');
-const innerEl = document.getElementById(id+'-inner');
-const themeBtn = document.getElementById(id+'-theme');
-let isDark = DATA.is_dark !== undefined ? DATA.is_dark : true;
-
-function applyTheme(dark) {
-  isDark = dark;
-  wrapEl.classList.toggle('light', !dark);
-  const bg = dark ? 0x070714 : 0xf0f0f0;
-  scene.background = new THREE.Color(bg);
-  const gridCol = dark ? 0x6666aa : 0xaaaaaa;
-  const gridCol2 = dark ? 0x444477 : 0x888888;
-  [gridHelper, gridSide, gridBack].forEach(function(g) {
-    g.material.color.set(dark ? 0x6666aa : 0xaaaaaa);
-    g.material.opacity = dark ? 0.55 : 0.5;
-  });
-  timePlaneMat.color.set(dark ? 0x6666aa : 0x888888);
-  timePlaneEdgeMat.color.set(dark ? 0x8888cc : 0x999999);
-  themeBtn.innerHTML = dark ? '&#127769;' : '&#9728;';
-}
-
-themeBtn.addEventListener('click', function() {
-  applyTheme(!isDark);
-});
 
 // ----- lighting -----
 const ambLight = new THREE.AmbientLight(0x404060, 0.6);
@@ -627,8 +574,6 @@ const timePlaneEdgeMat = new THREE.LineBasicMaterial({
   transparent: true,
   opacity: 0.12,
 });
-applyTheme(isDark);
-
 // ----- build time slice planes -----
 function buildTimePlanes(n) {
   while (timePlaneGroup.children.length) {
@@ -682,7 +627,7 @@ function drawWaveform(t) {
   var dur = DATA.duration;
 
   // grid
-  ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
   ctx.lineWidth = 1;
   for (var y = 0.5; y < h; y += h/4) {
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
@@ -694,14 +639,14 @@ function drawWaveform(t) {
   ctx.textBaseline = 'top';
   for (var tm = 0; tm <= dur; tm += Math.max(1, Math.round(dur/6))) {
     var x = (tm / dur) * w;
-    ctx.fillStyle = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
     ctx.fillText(tm + 's', x, h - 11);
-    ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
     ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
   }
 
   // baseline
-  ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
   ctx.beginPath(); ctx.moveTo(0, h*0.5); ctx.lineTo(w, h*0.5); ctx.stroke();
 
   // unplayed fill (full waveform)
@@ -714,7 +659,7 @@ function drawWaveform(t) {
     ctx.lineTo((i/n)*w, h*0.5 + peaks[i][1] * h*0.42);
   }
   ctx.closePath();
-  ctx.fillStyle = isDark ? 'rgba(0,210,255,0.1)' : 'rgba(0,102,204,0.08)';
+  ctx.fillStyle = 'rgba(0,210,255,0.1)';
   ctx.fill();
 
   // played overlay (clipped to cursor)
@@ -736,7 +681,7 @@ function drawWaveform(t) {
       ctx.lineTo((i/n)*w, h*0.5 + peaks[i][1] * h*0.42);
     }
     ctx.closePath();
-    ctx.fillStyle = isDark ? 'rgba(0,210,255,0.25)' : 'rgba(0,102,204,0.2)';
+    ctx.fillStyle = 'rgba(0,210,255,0.25)';
     ctx.fill();
     ctx.restore();
 
@@ -779,8 +724,8 @@ function drawProfile(t) {
   function toX(c) { return pad + ((c - cMin) / cRange) * plotW; }
   function toY(r) { return pad + (1 - (r - rMin) / rRange) * plotH; }
 
-  var gridCol = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)';
-  var textCol = isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.35)';
+  var gridCol = 'rgba(255,255,255,0.05)';
+  var textCol = 'rgba(255,255,255,0.3)';
 
   // grid lines
   ctx.strokeStyle = gridCol;
