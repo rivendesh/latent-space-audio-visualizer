@@ -1083,7 +1083,6 @@ function onFsChange() {
   const isFs = !!document.fullscreenElement;
   fsBtn.textContent = isFs ? '✕' : '⛶';
   if (!isFs && viewport) {
-    // Force correct sizing after exiting fullscreen
     requestAnimationFrame(function() {
       var w = viewport.clientWidth, h = viewport.clientHeight;
       if (w > 0 && h > 0) {
@@ -1091,7 +1090,6 @@ function onFsChange() {
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
       }
-      animate();
     });
   }
 }
@@ -1101,13 +1099,10 @@ document.addEventListener('mozfullscreenchange', onFsChange);
 
 // ----- init -----
 initAudio();
-setTimeout(() => animate(), 100);
+animate();
 
 // ResizeObserver for sidebar and container size changes
-const ro = new ResizeObserver(() => {
-  clearTimeout(window._r3dResize);
-  window._r3dResize = setTimeout(() => animate(), 80);
-});
+const ro = new ResizeObserver(() => animate());
 ro.observe(viewport);
 </script>
 """
