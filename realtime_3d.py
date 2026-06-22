@@ -62,15 +62,12 @@ _TEMPLATE = r"""
     --text-label: #999;
     --range-bg: #333;
     --accent: #00d2ff;
-    border-radius: 8px;
-    padding: 16px 20px 20px;
     font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
     user-select: none;
     display: flex;
     flex-direction: column;
     height: 100%;
     box-sizing: border-box;
-    background: var(--bg);
     color: var(--text);
   }
   #__COMPONENT_ID__-wrap.light {
@@ -88,19 +85,6 @@ _TEMPLATE = r"""
     flex-direction: column;
     flex: 1;
     min-height: 0;
-  }
-  #__COMPONENT_ID__-wrap h3 {
-    margin: 0;
-    color: var(--text-strong);
-    font-weight: 600;
-    font-size: 17px;
-    display: inline;
-  }
-  #__COMPONENT_ID__-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
   }
   #__COMPONENT_ID__-viewport {
     position: relative;
@@ -190,11 +174,6 @@ _TEMPLATE = r"""
 
 <div id="__COMPONENT_ID__-wrap">
   <div id="__COMPONENT_ID__-inner">
-  <div id="__COMPONENT_ID__-header">
-    <h3>3D Acoustic Manifold</h3>
-    <span class="time" id="__COMPONENT_ID__-time">0:00 / 0:00</span>
-  </div>
-
   <div id="__COMPONENT_ID__-viewport">
     <canvas id="__COMPONENT_ID__-three"></canvas>
   </div>
@@ -211,6 +190,7 @@ _TEMPLATE = r"""
     <label>Orbit</label>
     <input type="range" id="__COMPONENT_ID__-orbit" min="0" max="5" step="0.1" value="0.4" style="width:64px">
     <span class="val" id="__COMPONENT_ID__-orbit-val">0.4</span>
+    <span class="time" id="__COMPONENT_ID__-time">0:00 / 0:00</span>
     <button class="theme-btn" id="__COMPONENT_ID__-theme">&#127769;</button>
   </div>
   </div>
@@ -717,13 +697,12 @@ _PROFILE_TEMPLATE = r"""
     --text-muted: #888;
     --text-label: #999;
     --accent: #00d2ff;
-    border-radius: 8px;
-    padding: 12px 16px 14px;
     font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
     height: 100%;
     box-sizing: border-box;
-    background: var(--bg);
     color: var(--text);
+    display: flex;
+    flex-direction: column;
   }
   #__COMPONENT_ID__-wrap.light {
     --bg: #f0f2f5;
@@ -734,22 +713,13 @@ _PROFILE_TEMPLATE = r"""
     --text-label: #666;
     --accent: #0066cc;
   }
-  #__COMPONENT_ID__-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
-  }
-  #__COMPONENT_ID__-header h3 {
-    margin: 0;
-    color: var(--text-strong);
-    font-weight: 600;
-    font-size: 15px;
-  }
   #__COMPONENT_ID__-legend {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
+    margin-bottom: 6px;
+    flex-shrink: 0;
   }
   .__COMPONENT_ID__-legend-label {
     font-size: 10px;
@@ -762,10 +732,11 @@ _PROFILE_TEMPLATE = r"""
     border: 1px solid rgba(255,255,255,0.08);
   }
   #__COMPONENT_ID__-canvas-wrap {
+    flex: 1;
+    min-height: 0;
     position: relative;
     border-radius: 6px;
     overflow: hidden;
-    height: calc(100% - 32px);
     background: var(--bg2);
   }
   #__COMPONENT_ID__-canvas-wrap canvas {
@@ -776,13 +747,10 @@ _PROFILE_TEMPLATE = r"""
 </style>
 
 <div id="__COMPONENT_ID__-wrap">
-  <div id="__COMPONENT_ID__-header">
-    <h3>Spectral Centroid &times; RMS Amplitude</h3>
-    <div id="__COMPONENT_ID__-legend">
-      <span class="__COMPONENT_ID__-legend-label" id="__COMPONENT_ID__-legend-low">0 Hz</span>
-      <canvas id="__COMPONENT_ID__-legend-bar" width="100" height="8"></canvas>
-      <span class="__COMPONENT_ID__-legend-label" id="__COMPONENT_ID__-legend-high">10 kHz</span>
-    </div>
+  <div id="__COMPONENT_ID__-legend">
+    <span class="__COMPONENT_ID__-legend-label" id="__COMPONENT_ID__-legend-low">0 Hz</span>
+    <canvas id="__COMPONENT_ID__-legend-bar" width="100" height="8"></canvas>
+    <span class="__COMPONENT_ID__-legend-label" id="__COMPONENT_ID__-legend-high">10 kHz</span>
   </div>
   <div id="__COMPONENT_ID__-canvas-wrap">
     <canvas id="__COMPONENT_ID__-prof"></canvas>
@@ -941,6 +909,143 @@ _PROFILE_TEMPLATE = r"""
 
   // ----- init -----
   buildLegend();
+  draw(-1);
+})();
+</script>
+"""
+
+
+# Build a standalone waveform component that syncs via BroadcastChannel with the 3D player.
+def build_waveform_component(waveform_peaks, duration, is_dark=True):
+    data = {
+        "waveform_peaks": waveform_peaks,
+        "duration": duration,
+        "is_dark": is_dark,
+    }
+
+    component_id = f"wave-{uuid.uuid4().hex[:8]}"
+    data_json = json.dumps(data)
+
+    html = _WAVEFORM_TEMPLATE.replace("__COMPONENT_ID__", component_id).replace(
+        "__DATA_JSON__", data_json
+    )
+    return html
+
+
+_WAVEFORM_TEMPLATE = r"""
+<style>
+  #__COMPONENT_ID__-wrap {
+    font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    height: 100%;
+    box-sizing: border-box;
+  }
+  #__COMPONENT_ID__-canvas-wrap {
+    border-radius: 6px;
+    overflow: hidden;
+    height: 100%;
+    background: #070714;
+  }
+  #__COMPONENT_ID__-canvas-wrap canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+  }
+  #__COMPONENT_ID__-wrap.light #__COMPONENT_ID__-canvas-wrap {
+    background: #ffffff;
+  }
+</style>
+
+<div id="__COMPONENT_ID__-wrap">
+  <div id="__COMPONENT_ID__-canvas-wrap">
+    <canvas id="__COMPONENT_ID__-wave"></canvas>
+  </div>
+</div>
+
+<script>
+(function() {
+  const DATA = __DATA_JSON__;
+  const id = '__COMPONENT_ID__';
+
+  const wrap = document.getElementById(id+'-wrap');
+  const canvas = document.getElementById(id+'-wave');
+  let isDark = DATA.is_dark !== undefined ? DATA.is_dark : true;
+  let currentTime = -1;
+
+  function draw(highlightTime) {
+    var ctx = canvas.getContext('2d');
+    var dpr = window.devicePixelRatio || 1;
+    var rect = canvas.parentElement.getBoundingClientRect();
+    var w = rect.width, h = rect.height;
+    if (w === 0 || h === 0) return;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    var peaks = DATA.waveform_peaks;
+    var n = peaks.length;
+
+    // draw waveform outline
+    ctx.beginPath();
+    ctx.moveTo(0, h/2);
+    for (var i = 0; i < n; i++) {
+      var x = (i / (n - 1)) * w;
+      var y = h/2 + (peaks[i][0] / 1.5) * h/2;
+      ctx.lineTo(x, y);
+    }
+    for (var i = n - 1; i >= 0; i--) {
+      var x = (i / (n - 1)) * w;
+      var y = h/2 + (peaks[i][1] / 1.5) * h/2;
+      ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    var fillCol = isDark ? 'rgba(0,210,255,0.2)' : 'rgba(0,102,204,0.15)';
+    ctx.fillStyle = fillCol;
+    ctx.fill();
+
+    // center line
+    var centerCol = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
+    ctx.strokeStyle = centerCol;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, h/2);
+    ctx.lineTo(w, h/2);
+    ctx.stroke();
+
+    // progress cursor
+    if (highlightTime >= 0) {
+      var progress = Math.min(Math.max(highlightTime / DATA.duration, 0), 1);
+      var cx = progress * w;
+      ctx.strokeStyle = '#ffd700';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(cx, 0);
+      ctx.lineTo(cx, h);
+      ctx.stroke();
+    }
+  }
+
+  // ----- BroadcastChannel sync -----
+  var bc = new BroadcastChannel('latent-3d-sync');
+  bc.onmessage = function(e) {
+    var msg = e.data;
+    if (msg.type === 'time') {
+      currentTime = msg.t;
+      draw(currentTime);
+    } else if (msg.type === 'theme') {
+      isDark = msg.isDark;
+      wrap.classList.toggle('light', !isDark);
+      draw(currentTime);
+    }
+  };
+
+  // ----- resize -----
+  var ro = new ResizeObserver(function() {
+    draw(currentTime);
+  });
+  ro.observe(canvas.parentElement);
+
+  // ----- init -----
   draw(-1);
 })();
 </script>
