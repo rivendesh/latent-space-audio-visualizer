@@ -13,6 +13,8 @@ def build_3d_component(audio, sr, latent_points, latent_times, centroids, rms, w
 
     centroid_min = float(centroids.min())
     centroid_max = float(centroids.max())
+    centroid_mean = float(centroids.mean())
+    centroid_std = float(centroids.std())
     rms_min = float(rms.min())
     rms_max = float(rms.max())
 
@@ -36,6 +38,8 @@ def build_3d_component(audio, sr, latent_points, latent_times, centroids, rms, w
         "centroid_max": centroid_max,
         "rms_min": rms_min,
         "rms_max": rms_max,
+        "centroid_mean": centroid_mean,
+        "centroid_std": centroid_std,
         "duration": float(len(audio) / sr),
         "audio_b64": audio_b64,
         "sr": sr,
@@ -312,6 +316,14 @@ _TEMPLATE = r"""
     <label>Zoom</label>
     <input type="range" id="__COMPONENT_ID__-zoom" min="5" max="50" value="15" style="width:56px">
     <span class="val" id="__COMPONENT_ID__-zoom-val">1.5</span>
+    <label>Fade</label>
+    <input type="range" id="__COMPONENT_ID__-fade" min="5" max="100" step="5" value="30" style="width:56px">
+    <span class="val" id="__COMPONENT_ID__-fade-val">3.0</span>
+    <label>Pan</label>
+    <select id="__COMPONENT_ID__-pan-mode" style="background:var(--bg2);color:var(--text);border:1px solid var(--text-muted);border-radius:4px;font-size:11px;padding:2px 4px;width:66px;">
+      <option value="midpoint">Midpoint</option>
+      <option value="none">None</option>
+    </select>
   </div>
   </div>
 </div>
@@ -369,6 +381,8 @@ let animId = null;
 let currentSpeed = 1.0;
 let currentVol = 0.75;
 let sourceGen = 0;
+let panMode = 'midpoint';
+let fadeExp = 3.0;
 
 // ----- Three.js -----
 const scene = new THREE.Scene();
@@ -391,7 +405,7 @@ controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.autoRotate = true;
 controls.autoRotateSpeed = 0.1;
-controls.target.set(0, 0, 0.5);
+controls.target.set(0, 0, 0);
 controls.update();
 
 // Data group for time-axis stretching
@@ -422,57 +436,91 @@ function makeDotTexture() {
 }
 const dotTexture = makeDotTexture();
 
-// ----- centroid color map: deep blue (low freq) -> cyan -> yellow -> hot red (high freq) -----
-function centroidColor(t) {
-  t = Math.max(0, Math.min(1, t));
-  if (t < 0.25) {
-    const u = t / 0.25;
-    return [0.05, 0.05 + 0.35*u, 0.5 + 0.5*u];
-  } else if (t < 0.5) {
-    const u = (t - 0.25) / 0.25;
-    return [0, 0.4 + 0.6*u, 1.0 - 0.3*u];
-  } else if (t < 0.75) {
-    const u = (t - 0.5) / 0.25;
-    return [0.8*u, 1.0 - 0.5*u, 0.7 - 0.7*u];
-  } else {
-    const u = (t - 0.75) / 0.25;
-    return [0.8 + 0.2*u, 0.5 - 0.4*u, 0];
-  }
+// ----- time-based color map: cyan -> purple -> red-orange (matches Static Analysis) -----
+var C_START = [0, 210, 255];
+var C_MID = [123, 47, 247];
+var C_END = [255, 107, 107];
+
+function lerpColor(a, b, t) {
+  return [a[0] + (b[0]-a[0])*t, a[1] + (b[1]-a[1])*t, a[2] + (b[2]-a[2])*t];
+}
+function pathColor(t) {
+  if (t < 0.5) return lerpColor(C_START, C_MID, t * 2);
+  return lerpColor(C_MID, C_END, (t - 0.5) * 2);
 }
 
 const points3d = DATA.points_3d;
 const centroids = DATA.centroids;
-const centroidMin = DATA.centroid_min;
-const centroidRange = DATA.centroid_max - DATA.centroid_min || 1;
 const n = points3d.length;
+var n1 = Math.max(1, n - 1);
+
+// Prefix sums for O(1) running midpoint of drawn segment
+const prefX = new Array(n);
+const prefY = new Array(n);
+const prefZ = new Array(n);
+let sx = 0, sy = 0, sz = 0;
+for (let i = 0; i < n; i++) {
+  sx += points3d[i][0];
+  sy += points3d[i][1];
+  sz += points3d[i][2];
+  prefX[i] = sx;
+  prefY[i] = sy;
+  prefZ[i] = sz;
+}
 
 // Pre-fill geometry arrays
 const posArr = new Float32Array(n * 3);
 const colArr = new Float32Array(n * 3);
+const sizeArr = new Float32Array(n);
+const alphaArr = new Float32Array(n);
 for (let i = 0; i < n; i++) {
   const p = points3d[i];
-  const cf = (centroids[i] - centroidMin) / centroidRange;
-  const [r, g, b] = centroidColor(cf);
+  const t = i / n1;
+  const [r, g, b] = pathColor(t);
   posArr[i*3] = p[0];
   posArr[i*3+1] = p[1];
   posArr[i*3+2] = p[2];
-  colArr[i*3] = r;
-  colArr[i*3+1] = g;
-  colArr[i*3+2] = b;
+  colArr[i*3] = r / 255;
+  colArr[i*3+1] = g / 255;
+  colArr[i*3+2] = b / 255;
 }
 
-// Points (sharp dots)
+// Points with per-vertex size and alpha via ShaderMaterial
 const pointGeo = new THREE.BufferGeometry();
 pointGeo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
-pointGeo.setAttribute('color', new THREE.BufferAttribute(colArr, 3));
+pointGeo.setAttribute('customColor', new THREE.BufferAttribute(colArr, 3));
+pointGeo.setAttribute('pointSize', new THREE.BufferAttribute(sizeArr, 1));
+pointGeo.setAttribute('pointAlpha', new THREE.BufferAttribute(alphaArr, 1));
 pointGeo.setDrawRange(0, 0);
-const pointMat = new THREE.PointsMaterial({
-  size: 0.12,
-  map: dotTexture,
-  vertexColors: true,
-  sizeAttenuation: true,
+
+const pointMat = new THREE.ShaderMaterial({
+  uniforms: {
+    pointTexture: { value: dotTexture },
+  },
+  vertexShader: [
+    'attribute float pointSize;',
+    'attribute float pointAlpha;',
+    'attribute vec3 customColor;',
+    'varying vec3 vColor;',
+    'varying float vAlpha;',
+    'void main() {',
+    '  vColor = customColor;',
+    '  vAlpha = pointAlpha;',
+    '  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);',
+    '  gl_PointSize = pointSize * (300.0 / -mvPosition.z);',
+    '  gl_Position = projectionMatrix * mvPosition;',
+    '}',
+  ].join('\n'),
+  fragmentShader: [
+    'uniform sampler2D pointTexture;',
+    'varying vec3 vColor;',
+    'varying float vAlpha;',
+    'void main() {',
+    '  vec4 tex = texture2D(pointTexture, gl_PointCoord);',
+    '  gl_FragColor = vec4(vColor, tex.a * vAlpha);',
+    '}',
+  ].join('\n'),
   transparent: true,
-  opacity: 1,
   depthWrite: false,
   blending: THREE.AdditiveBlending,
 });
@@ -488,11 +536,12 @@ for (let i = 0; i < n; i++) {
 }
 const lineGeo = new THREE.BufferGeometry();
 lineGeo.setAttribute('position', new THREE.BufferAttribute(linePos, 3));
+lineGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(colArr), 3));
 lineGeo.setDrawRange(0, 0);
 const lineMat = new THREE.LineBasicMaterial({
-  color: 0x00d2ff,
+  vertexColors: true,
   transparent: true,
-  opacity: 0.3,
+  opacity: 0.4,
 });
 const line = new THREE.Line(lineGeo, lineMat);
 dataGroup.add(line);
@@ -601,8 +650,8 @@ function buildLegend() {
   const ctx = legendBar.getContext('2d');
   for (var i = 0; i < legendBar.width; i++) {
     var t = i / legendBar.width;
-    var [r, g, b] = centroidColor(t);
-    ctx.fillStyle = 'rgb(' + ((r*255)<<0) + ',' + ((g*255)<<0) + ',' + ((b*255)<<0) + ')';
+    var [r, g, b] = pathColor(t);
+    ctx.fillStyle = 'rgb(' + ((r)<<0) + ',' + ((g)<<0) + ',' + ((b)<<0) + ')';
     ctx.fillRect(i, 0, 1, legendBar.height);
   }
   legendLow.textContent = (DATA.centroid_min / 1000).toFixed(1) + ' kHz';
@@ -753,15 +802,16 @@ function drawProfile(t) {
 
   var n = DATA.centroids.length;
 
-  // all data points, coloured by centroid
+  // all data points, coloured by distance from centroid mean
   for (var i = 0; i < n; i++) {
     var cx = toX(DATA.centroids[i]);
     var cy = toY(DATA.rms[i]);
-    var cf = (DATA.centroids[i] - cMin) / cRange;
-    var col = centroidColor(cf);
+    var z = (DATA.centroids[i] - DATA.centroid_mean) / (DATA.centroid_std || 1);
+    var cf = Math.max(0, Math.min(1, 0.5 + z / 6));
+    var col = pathColor(cf);
     ctx.beginPath();
     ctx.arc(cx, cy, 2, 0, Math.PI*2);
-    ctx.fillStyle = 'rgba(' + ((col[0]*255)<<0) + ',' + ((col[1]*255)<<0) + ',' + ((col[2]*255)<<0) + ',0.5)';
+    ctx.fillStyle = 'rgba(' + (col[0]<<0) + ',' + (col[1]<<0) + ',' + (col[2]<<0) + ',0.5)';
     ctx.fill();
   }
 
@@ -878,22 +928,38 @@ function seek(time) {
 function animate() {
   const t = isPlaying ? Math.min(getCurrentTime(), DATA.duration) : pausedAt;
 
-  // Stop the loop when track ends
-  if (t >= DATA.duration && !isPlaying && pausedAt >= DATA.duration) {
-    animId = null;
-    return;
-  }
-
   const progress = Math.min(Math.max(t / DATA.duration, 0), 1);
   const drawCount = Math.min(Math.floor(progress * n), n);
 
-  // Update point draw range — recency is handled by PointsMaterial blending
+  // Update point draw range
   pointGeo.setDrawRange(0, drawCount);
-  pointMat.size = 0.06 + 0.1 * Math.min(progress * 1.5, 1);
+
+  // Per-point recency scaling (matches 2D Player: fadeExp-controlled falloff)
+  for (var i = 0; i < drawCount; i++) {
+    var recency = Math.pow((i + 1) / (drawCount || 1), fadeExp);
+    sizeArr[i] = 0.06 + 0.4 * recency;
+    alphaArr[i] = 0.3 + 0.7 * recency;
+  }
+  for (var i = drawCount; i < n; i++) {
+    sizeArr[i] = 0;
+    alphaArr[i] = 0;
+  }
+  pointGeo.attributes.pointSize.needsUpdate = true;
+  pointGeo.attributes.pointAlpha.needsUpdate = true;
 
   // Update trajectory line
   lineGeo.setDrawRange(0, Math.max(0, drawCount - 1));
 
+  // Track the pan target — running midpoint or none (fixed).
+  if (drawCount > 0 && panMode === 'midpoint') {
+    var tx = prefX[drawCount - 1] / drawCount;
+    var ty = prefY[drawCount - 1] / drawCount;
+    var tz = prefZ[drawCount - 1] / drawCount;
+    tz *= dataGroup.scale.z;
+    controls.target.x += (tx - controls.target.x) * 0.12;
+    controls.target.y += (ty - controls.target.y) * 0.12;
+    controls.target.z += (tz - controls.target.z) * 0.12;
+  }
   controls.update();
 
   // Resize if needed
@@ -921,14 +987,13 @@ function animate() {
   timeDisplay.textContent = mins + ':' + secs.toString().padStart(2,'0') + ' / ' + tMins + ':' + tSecs.toString().padStart(2,'0');
   seekBar.value = total > 0 ? (t/total)*1000 : 0;
 
+  // End-of-track state cleanup (animation loop keeps running for interaction)
   if (t >= DATA.duration) {
     if (isPlaying) {
       isPlaying = false;
       playBtn.innerHTML = '&#9654; Play';
     }
     pausedAt = DATA.duration;
-    animId = null;
-    return;
   }
   animId = requestAnimationFrame(animate);
 }
@@ -939,9 +1004,6 @@ playBtn.addEventListener('click', togglePlay);
 seekBar.addEventListener('input', function() {
   const time = (parseFloat(this.value) / 1000) * DATA.duration;
   pausedAt = time;
-  if (!isPlaying && audioBuffer) {
-    animate();
-  }
   if (isPlaying) seek(time);
 });
 
@@ -994,7 +1056,21 @@ zoomSlider.addEventListener('input', function() {
   camera.updateProjectionMatrix();
 });
 
+const panSelect = document.getElementById(id+'-pan-mode');
+panSelect.addEventListener('change', function() {
+  panMode = this.value;
+});
+
+const fadeSlider = document.getElementById(id+'-fade');
+const fadeVal = document.getElementById(id+'-fade-val');
+fadeSlider.addEventListener('input', function() {
+  const v = parseFloat(this.value);
+  fadeExp = v / 10;
+  fadeVal.textContent = fadeExp.toFixed(1);
+});
+
 // ----- fullscreen toggle (targets inner wrapper to include controls) -----
+const innerEl = document.getElementById(id+'-inner');
 const fsBtn = document.getElementById(id+'-fs-btn');
 fsBtn.addEventListener('click', function() {
   if (!document.fullscreenElement) {

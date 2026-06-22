@@ -57,7 +57,7 @@ st.markdown("""
 <style>
 div[data-testid="stTabContent"] > div {
     overflow-y: auto;
-    max-height: calc(100vh - 200px);
+    max-height: 3000px;
 }
 section[data-testid="stSidebar"] .stMarkdown p { word-break: break-word; overflow-wrap: break-word; }
 section[data-testid="stSidebar"] .stMarkdown code { word-break: break-all; white-space: pre-wrap; }
@@ -345,6 +345,7 @@ with tab2:
     st.components.v1.html(html, height=680)
 
 with tab3:
+    st.subheader("3D Latent Space Manifold")
     html_3d = build_3d_component(
         audio=pb_audio,
         sr=sr,
@@ -354,4 +355,4 @@ with tab3:
         rms=pb_rms,
         waveform_peaks=pb_peaks,
     )
-    st.components.v1.html(html_3d, height=1100)
+    st.components.v1.html(html_3d, height=2240)
