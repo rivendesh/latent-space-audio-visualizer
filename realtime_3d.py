@@ -51,16 +51,44 @@ def build_3d_component(audio, sr, latent_points, latent_times, centroids, rms):
 _TEMPLATE = r"""
 <style>
   #__COMPONENT_ID__-wrap {
-    background: #0a0a1a;
+    --bg: #0a0a1a;
+    --bg2: #070714;
+    --text: #e0e0e0;
+    --text-strong: #fff;
+    --text-muted: #888;
+    --text-label: #999;
+    --range-bg: #333;
+    --accent: #00d2ff;
     border-radius: 8px;
     padding: 16px 20px 20px;
-    color: #e0e0e0;
     font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
     user-select: none;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    box-sizing: border-box;
+    background: var(--bg);
+    color: var(--text);
+  }
+  #__COMPONENT_ID__-wrap.light {
+    --bg: #f0f2f5;
+    --bg2: #ffffff;
+    --text: #333;
+    --text-strong: #111;
+    --text-muted: #777;
+    --text-label: #666;
+    --range-bg: #ccc;
+    --accent: #0066cc;
+  }
+  #__COMPONENT_ID__-inner {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
   }
   #__COMPONENT_ID__-wrap h3 {
     margin: 0;
-    color: #fff;
+    color: var(--text-strong);
     font-weight: 600;
     font-size: 17px;
     display: inline;
@@ -75,30 +103,21 @@ _TEMPLATE = r"""
     position: relative;
     border-radius: 6px;
     overflow: hidden;
-    height: 520px;
-    background: #070714;
+    flex: 1;
+    min-height: 300px;
+    background: var(--bg2);
   }
   #__COMPONENT_ID__-viewport canvas {
     display: block;
     width: 100% !important;
     height: 100% !important;
   }
-  #__COMPONENT_ID__-label-layer {
-    position: absolute;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    pointer-events: none;
-    overflow: hidden;
-  }
-  #__COMPONENT_ID__-label-layer div {
-    pointer-events: none;
-  }
   #__COMPONENT_ID__-prof-wrap {
     margin-top: 10px;
     border-radius: 6px;
     overflow: hidden;
-    height: 200px;
-    background: #070714;
+    height: 160px;
+    background: var(--bg2);
   }
   #__COMPONENT_ID__-prof-wrap canvas {
     display: block;
@@ -113,7 +132,7 @@ _TEMPLATE = r"""
     flex-wrap: wrap;
   }
   .__COMPONENT_ID__-controls button {
-    background: linear-gradient(135deg,#00d2ff,#3a7bd5);
+    background: linear-gradient(135deg,var(--accent),#3a7bd5);
     border: none;
     color: #000;
     padding: 8px 20px;
@@ -123,11 +142,26 @@ _TEMPLATE = r"""
     font-size: 15px;
     min-width: 84px;
   }
+  .__COMPONENT_ID__-controls .theme-btn {
+    background: none;
+    border: 1px solid var(--text-muted);
+    color: var(--text-muted);
+    min-width: auto;
+    padding: 6px 10px;
+    font-size: 16px;
+    line-height: 1;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .__COMPONENT_ID__-controls .theme-btn:hover {
+    border-color: var(--text-strong);
+    color: var(--text-strong);
+  }
   .__COMPONENT_ID__-controls input[type=range] {
     height: 4px;
     -webkit-appearance: none;
     appearance: none;
-    background: #333;
+    background: var(--range-bg);
     border-radius: 2px;
     outline: none;
     cursor: pointer;
@@ -137,45 +171,34 @@ _TEMPLATE = r"""
     -webkit-appearance: none;
     width: 12px; height: 12px;
     border-radius: 50%;
-    background: #00d2ff;
+    background: var(--accent);
     cursor: pointer;
   }
   .__COMPONENT_ID__-controls label {
     font-size: 12px;
-    color: #999;
+    color: var(--text-label);
     white-space: nowrap;
   }
   .__COMPONENT_ID__-controls .val {
     font-size: 12px;
-    color: #888;
+    color: var(--text-muted);
     font-family: 'SF Mono',Monaco,monospace;
     min-width: 32px;
   }
   .__COMPONENT_ID__-controls .time {
     font-family: 'SF Mono',Monaco,monospace;
     font-size: 13px;
-    color: #888;
+    color: var(--text-muted);
     margin-left: auto;
   }
   .__COMPONENT_ID__-seek {
     flex: 1;
     min-width: 80px;
   }
-  .nd-label {
-    color: #fff;
-    font-size: 9px;
-    font-family: 'SF Mono',Monaco,monospace;
-    background: rgba(0,0,0,0.55);
-    padding: 1px 4px;
-    border-radius: 3px;
-    white-space: nowrap;
-    border: 1px solid rgba(255,255,255,0.1);
-    pointer-events: none;
-    line-height: 1.3;
-  }
 </style>
 
 <div id="__COMPONENT_ID__-wrap">
+  <div id="__COMPONENT_ID__-inner">
   <div id="__COMPONENT_ID__-header">
     <h3>3D Acoustic Manifold</h3>
     <span class="time" id="__COMPONENT_ID__-time">0:00 / 0:00</span>
@@ -183,7 +206,6 @@ _TEMPLATE = r"""
 
   <div id="__COMPONENT_ID__-viewport">
     <canvas id="__COMPONENT_ID__-three"></canvas>
-    <div id="__COMPONENT_ID__-label-layer"></div>
   </div>
 
   <div id="__COMPONENT_ID__-prof-wrap">
@@ -200,8 +222,10 @@ _TEMPLATE = r"""
     <input type="range" id="__COMPONENT_ID__-speed" min="0.25" max="3" step="0.25" value="1" style="width:64px">
     <span class="val" id="__COMPONENT_ID__-speed-val">1x</span>
     <label>Orbit</label>
-    <input type="range" id="__COMPONENT_ID__-orbit" min="0" max="5" step="0.1" value="1.8" style="width:64px">
-    <span class="val" id="__COMPONENT_ID__-orbit-val">1.8</span>
+    <input type="range" id="__COMPONENT_ID__-orbit" min="0" max="5" step="0.1" value="0.9" style="width:64px">
+    <span class="val" id="__COMPONENT_ID__-orbit-val">0.9</span>
+    <button class="theme-btn" id="__COMPONENT_ID__-theme">&#127769;</button>
+  </div>
   </div>
 </div>
 
@@ -217,14 +241,12 @@ _TEMPLATE = r"""
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
 const DATA = __DATA_JSON__;
 const id = '__COMPONENT_ID__';
 
 const viewport = document.getElementById(id+'-viewport');
 const threeCanvas = document.getElementById(id+'-three');
-const labelLayer = document.getElementById(id+'-label-layer');
 const profCanvas = document.getElementById(id+'-prof');
 const playBtn = document.getElementById(id+'-play');
 const seekBar = document.getElementById(id+'-seek');
@@ -254,7 +276,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x070714);
 
 const camera = new THREE.PerspectiveCamera(45, viewport.clientWidth / viewport.clientHeight, 0.1, 100);
-camera.position.set(3.5, 2.5, 3.5);
+camera.position.set(4, 3, 4);
 
 const renderer = new THREE.WebGLRenderer({
   canvas: threeCanvas,
@@ -264,18 +286,32 @@ const renderer = new THREE.WebGLRenderer({
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(viewport.clientWidth, viewport.clientHeight);
 
-const labelRenderer = new CSS2DRenderer({
-  element: labelLayer,
-});
-labelRenderer.setSize(viewport.clientWidth, viewport.clientHeight);
-
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.autoRotate = true;
-controls.autoRotateSpeed = 1.8;
+controls.autoRotateSpeed = 0.9;
 controls.target.set(0, 0, 0.5);
 controls.update();
+
+// ----- theme -----
+const wrapEl = document.getElementById(id+'-wrap');
+const themeBtn = document.getElementById(id+'-theme');
+let isDark = true;
+
+function applyTheme(dark) {
+  isDark = dark;
+  wrapEl.classList.toggle('light', !dark);
+  const bg = dark ? 0x070714 : 0xf0f0f0;
+  scene.background = new THREE.Color(bg);
+  gridHelper.material.color.set(dark ? 0x444488 : 0xcccccc);
+  gridHelper.material.opacity = dark ? 0.25 : 0.3;
+  themeBtn.innerHTML = dark ? '&#127769;' : '&#9728;';
+}
+
+themeBtn.addEventListener('click', function() {
+  applyTheme(!isDark);
+});
 
 // ----- lighting -----
 const ambLight = new THREE.AmbientLight(0x404060, 0.6);
@@ -284,37 +320,34 @@ const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
 dirLight.position.set(1, 2, 1);
 scene.add(dirLight);
 
-// ----- create sprite texture -----
-function makeSpriteTexture() {
+// ----- sharp dot texture for points -----
+function makeDotTexture() {
   const c = document.createElement('canvas');
-  c.width = 64;
-  c.height = 64;
+  c.width = 16;
+  c.height = 16;
   const ctx = c.getContext('2d');
-  const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-  g.addColorStop(0, 'rgba(255,255,255,1)');
-  g.addColorStop(0.2, 'rgba(255,255,255,0.8)');
-  g.addColorStop(0.6, 'rgba(255,255,255,0.3)');
-  g.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, 64, 64);
+  ctx.beginPath();
+  ctx.arc(8, 8, 6, 0, Math.PI * 2);
+  ctx.fillStyle = '#fff';
+  ctx.fill();
   const tex = new THREE.CanvasTexture(c);
   tex.needsUpdate = true;
   return tex;
 }
-const dotTexture = makeSpriteTexture();
+const dotTexture = makeDotTexture();
 
 // ----- centroid color map: blue (low freq) -> cyan -> magenta -> red (high freq) -----
 function centroidColor(t) {
   t = Math.max(0, Math.min(1, t));
   if (t < 0.33) {
     const u = t / 0.33;
-    return [0, 0.4 + 0.6*u, 1];              // blue -> cyan
+    return [0, 0.4 + 0.6*u, 1];
   } else if (t < 0.66) {
     const u = (t - 0.33) / 0.33;
-    return [0.6*u, 0.6 + 0.4*u, 1 - u];       // cyan -> magenta
+    return [0.6*u, 0.6 + 0.4*u, 1 - u];
   } else {
     const u = (t - 0.66) / 0.34;
-    return [0.6 + 0.4*u, 0.4*(1-u), 0.2*(1-u)]; // magenta -> red
+    return [0.6 + 0.4*u, 0.4*(1-u), 0.2*(1-u)];
   }
 }
 
@@ -324,43 +357,78 @@ const centroidMin = DATA.centroid_min;
 const centroidRange = DATA.centroid_max - DATA.centroid_min || 1;
 const n = points3d.length;
 
-const sprites = [];
-const labels = [];
-const labelDivs = [];
-
+// Pre-fill geometry arrays
+const posArr = new Float32Array(n * 3);
+const colArr = new Float32Array(n * 3);
 for (let i = 0; i < n; i++) {
   const p = points3d[i];
   const cf = (centroids[i] - centroidMin) / centroidRange;
   const [r, g, b] = centroidColor(cf);
-
-  const mat = new THREE.SpriteMaterial({
-    map: dotTexture,
-    color: new THREE.Color(r, g, b),
-    transparent: true,
-    opacity: 0,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-  });
-  const sprite = new THREE.Sprite(mat);
-  sprite.position.set(p[0], p[1], p[2]);
-  sprite.scale.set(0, 0, 1);
-  scene.add(sprite);
-  sprites.push(sprite);
-
-  // label div (hidden initially)
-  const div = document.createElement('div');
-  div.className = 'nd-label';
-  const freqK = (centroids[i] / 1000).toFixed(1);
-  div.textContent = freqK + ' kHz';
-  div.style.display = 'none';
-  const label = new CSS2DObject(div);
-  label.position.set(p[0], p[1] + 0.08, p[2]);
-  scene.add(label);
-  labels.push(label);
-  labelDivs.push(div);
+  posArr[i*3] = p[0];
+  posArr[i*3+1] = p[1];
+  posArr[i*3+2] = p[2];
+  colArr[i*3] = r;
+  colArr[i*3+1] = g;
+  colArr[i*3+2] = b;
 }
 
+// Points (sharp dots)
+const pointGeo = new THREE.BufferGeometry();
+pointGeo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+pointGeo.setAttribute('color', new THREE.BufferAttribute(colArr, 3));
+pointGeo.setDrawRange(0, 0);
+const pointMat = new THREE.PointsMaterial({
+  size: 0.12,
+  map: dotTexture,
+  vertexColors: true,
+  sizeAttenuation: true,
+  transparent: true,
+  opacity: 1,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+});
+const points = new THREE.Points(pointGeo, pointMat);
+scene.add(points);
+
+// Trajectory line
+const linePos = new Float32Array(n * 3);
+for (let i = 0; i < n; i++) {
+  linePos[i*3] = points3d[i][0];
+  linePos[i*3+1] = points3d[i][1];
+  linePos[i*3+2] = points3d[i][2];
+}
+const lineGeo = new THREE.BufferGeometry();
+lineGeo.setAttribute('position', new THREE.BufferAttribute(linePos, 3));
+lineGeo.setDrawRange(0, 0);
+const lineMat = new THREE.LineBasicMaterial({
+  color: 0x00d2ff,
+  transparent: true,
+  opacity: 0.3,
+});
+const line = new THREE.Line(lineGeo, lineMat);
+scene.add(line);
+
 // ----- axes -----
+function makeLabelSprite(text) {
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 48;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.fillRect(0, 12, c.width, 28);
+  ctx.font = 'bold 22px "SF Mono",Monaco,monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#fff';
+  ctx.fillText(text, 64, 28);
+  const tex = new THREE.CanvasTexture(c);
+  tex.needsUpdate = true;
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0.6, depthWrite: false });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(0.5, 0.2, 1);
+  return sprite;
+}
+
 function addAxis(from, to, color, labelText) {
   const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.4 });
   const geo = new THREE.BufferGeometry().setFromPoints([
@@ -368,21 +436,9 @@ function addAxis(from, to, color, labelText) {
     new THREE.Vector3(to[0], to[1], to[2]),
   ]);
   scene.add(new THREE.Line(geo, mat));
-
-  const div = document.createElement('div');
-  div.textContent = labelText;
-  div.style.color = '#fff';
-  div.style.fontSize = '11px';
-  div.style.fontWeight = '600';
-  div.style.fontFamily = "'SF Mono',Monaco,monospace";
-  div.style.textShadow = '0 0 6px rgba(0,0,0,0.8)';
-  div.style.background = 'rgba(0,0,0,0.3)';
-  div.style.padding = '1px 5px';
-  div.style.borderRadius = '3px';
-  div.style.pointerEvents = 'none';
-  const labelObj = new CSS2DObject(div);
-  labelObj.position.set(to[0], to[1], to[2]);
-  scene.add(labelObj);
+  const lbl = makeLabelSprite(labelText);
+  lbl.position.set(to[0], to[1], to[2]);
+  scene.add(lbl);
 }
 
 const axExt = 1.6;
@@ -465,7 +521,9 @@ function drawProfile(currentTime) {
   function toY(r) { return pad + (1 - (r - rMin) / rRange) * plotH; }
 
   // grid
-  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  const gridCol = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)';
+  const textCol = isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.35)';
+  ctx.strokeStyle = gridCol;
   ctx.lineWidth = 1;
   for (let i = 0; i <= 4; i++) {
     const gx = pad + (i/4)*plotW;
@@ -475,7 +533,7 @@ function drawProfile(currentTime) {
   }
 
   // axis labels
-  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.fillStyle = textCol;
   ctx.font = '9px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
@@ -609,36 +667,22 @@ function seek(time) {
 // ----- animation -----
 function animate() {
   const t = isPlaying ? Math.min(getCurrentTime(), DATA.duration) : pausedAt;
+
+  // Stop the loop when track ends
+  if (t >= DATA.duration && !isPlaying && pausedAt >= DATA.duration) {
+    animId = null;
+    return;
+  }
+
   const progress = Math.min(Math.max(t / DATA.duration, 0), 1);
   const drawCount = Math.min(Math.floor(progress * n), n);
 
-  // update sprites
-  for (let i = 0; i < n; i++) {
-    const sprite = sprites[i];
-    if (i < drawCount) {
-      const recency = Math.pow((i + 1) / (drawCount || 1), 2);
-      const scale = 0.04 + 0.12 * recency;
-      sprite.scale.set(scale, scale, 1);
-      sprite.material.opacity = 0.25 + 0.6 * recency;
-      sprite.visible = true;
-    } else {
-      sprite.scale.set(0, 0, 1);
-      sprite.visible = false;
-    }
-  }
+  // Update point draw range — recency is handled by PointsMaterial blending
+  pointGeo.setDrawRange(0, drawCount);
+  pointMat.size = 0.06 + 0.1 * Math.min(progress * 1.5, 1);
 
-  // update labels (last 8 nodes)
-  const labelStart = Math.max(0, Math.min(drawCount - 8, n - 8));
-  const labelEnd = Math.min(drawCount, n);
-  for (let i = 0; i < n; i++) {
-    if (i >= labelStart && i < labelEnd) {
-      labelDivs[i].style.display = 'block';
-      labels[i].visible = true;
-    } else {
-      labelDivs[i].style.display = 'none';
-      labels[i].visible = false;
-    }
-  }
+  // Update trajectory line
+  lineGeo.setDrawRange(0, Math.max(0, drawCount - 1));
 
   controls.update();
 
@@ -650,11 +694,9 @@ function animate() {
     camera.aspect = vpW / vpH;
     camera.updateProjectionMatrix();
     renderer.setSize(vpW, vpH);
-    labelRenderer.setSize(vpW, vpH);
   }
 
   renderer.render(scene, camera);
-  labelRenderer.render(scene, camera);
 
   // profile
   sizeProfCanvas();
@@ -669,10 +711,12 @@ function animate() {
   timeDisplay.textContent = mins + ':' + secs.toString().padStart(2,'0') + ' / ' + tMins + ':' + tSecs.toString().padStart(2,'0');
   seekBar.value = total > 0 ? (t/total)*1000 : 0;
 
-  if (isPlaying && t >= DATA.duration) {
-    isPlaying = false;
+  if (t >= DATA.duration) {
+    if (isPlaying) {
+      isPlaying = false;
+      playBtn.innerHTML = '&#9654; Play';
+    }
     pausedAt = DATA.duration;
-    playBtn.innerHTML = '&#9654; Play';
     animId = null;
     return;
   }
@@ -721,5 +765,14 @@ window.addEventListener('resize', () => {
   clearTimeout(window._r3dResize);
   window._r3dResize = setTimeout(() => animate(), 100);
 });
+</script>
+
+<script>
+(function() {
+  var root = document.getElementById('__COMPONENT_ID__-wrap');
+  function size() { root.style.height = window.innerHeight + 'px'; }
+  size();
+  window.addEventListener('resize', size);
+})();
 </script>
 """
