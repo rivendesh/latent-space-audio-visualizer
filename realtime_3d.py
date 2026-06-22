@@ -274,7 +274,7 @@ function applyTheme(dark) {
   const bg = dark ? 0x070714 : 0xf0f0f0;
   scene.background = new THREE.Color(bg);
   gridHelper.material.color.set(dark ? 0x444488 : 0xcccccc);
-  gridHelper.material.opacity = dark ? 0.25 : 0.3;
+  gridHelper.material.opacity = dark ? 0.4 : 0.5;
   themeBtn.innerHTML = dark ? '&#127769;' : '&#9728;';
   bc.postMessage({type:'theme', isDark: dark});
 }
@@ -421,7 +421,7 @@ addAxis([0, 0, -0.1], [0, 0, 1.1], 0x00d2ff, 'Time');
 const gridHelper = new THREE.GridHelper(6, 12, 0x444488, 0x222244);
 gridHelper.position.y = -axExt;
 gridHelper.material.transparent = true;
-gridHelper.material.opacity = 0.25;
+gridHelper.material.opacity = 0.4;
 scene.add(gridHelper);
 applyTheme(isDark);
 
@@ -984,44 +984,79 @@ _WAVEFORM_TEMPLATE = r"""
 
     var peaks = DATA.waveform_peaks;
     var n = peaks.length;
+    var dur = DATA.duration;
 
-    // draw waveform outline
-    ctx.beginPath();
-    ctx.moveTo(0, h/2);
-    for (var i = 0; i < n; i++) {
-      var x = (i / (n - 1)) * w;
-      var y = h/2 + (peaks[i][0] / 1.5) * h/2;
-      ctx.lineTo(x, y);
+    // grid
+    ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)';
+    ctx.lineWidth = 1;
+    for (var y = 0.5; y < h; y += h/4) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
     }
-    for (var i = n - 1; i >= 0; i--) {
-      var x = (i / (n - 1)) * w;
-      var y = h/2 + (peaks[i][1] / 1.5) * h/2;
-      ctx.lineTo(x, y);
+
+    // time marks
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    for (var t = 0; t <= dur; t += Math.max(1, Math.round(dur/6))) {
+      var x = (t / dur) * w;
+      ctx.fillStyle = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+      ctx.fillText(t + 's', x, h - 11);
+      ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)';
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+    }
+
+    // baseline
+    ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
+    ctx.beginPath(); ctx.moveTo(0, h*0.5); ctx.lineTo(w, h*0.5); ctx.stroke();
+
+    // unplayed fill (full waveform)
+    ctx.beginPath();
+    ctx.moveTo(0, h*0.5);
+    for (var i=0; i<n; i++) {
+      ctx.lineTo((i/n)*w, h*0.5 + peaks[i][0] * h*0.42);
+    }
+    for (var i=n-1; i>=0; i--) {
+      ctx.lineTo((i/n)*w, h*0.5 + peaks[i][1] * h*0.42);
     }
     ctx.closePath();
-    var fillCol = isDark ? 'rgba(0,210,255,0.2)' : 'rgba(0,102,204,0.15)';
-    ctx.fillStyle = fillCol;
+    ctx.fillStyle = isDark ? 'rgba(0,210,255,0.1)' : 'rgba(0,102,204,0.08)';
     ctx.fill();
 
-    // center line
-    var centerCol = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
-    ctx.strokeStyle = centerCol;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, h/2);
-    ctx.lineTo(w, h/2);
-    ctx.stroke();
-
-    // progress cursor
+    // played overlay (clipped to cursor)
     if (highlightTime >= 0) {
-      var progress = Math.min(Math.max(highlightTime / DATA.duration, 0), 1);
-      var cx = progress * w;
-      ctx.strokeStyle = '#ffd700';
-      ctx.lineWidth = 1.5;
+      var cursorFrac = Math.min(Math.max(highlightTime / dur, 0), 1);
+      var cursorX = cursorFrac * w;
+
+      ctx.save();
       ctx.beginPath();
-      ctx.moveTo(cx, 0);
-      ctx.lineTo(cx, h);
-      ctx.stroke();
+      ctx.rect(0, 0, cursorX, h);
+      ctx.clip();
+
+      ctx.beginPath();
+      ctx.moveTo(0, h*0.5);
+      for (var i=0; i<n; i++) {
+        ctx.lineTo((i/n)*w, h*0.5 + peaks[i][0] * h*0.42);
+      }
+      for (var i=n-1; i>=0; i--) {
+        ctx.lineTo((i/n)*w, h*0.5 + peaks[i][1] * h*0.42);
+      }
+      ctx.closePath();
+      ctx.fillStyle = isDark ? 'rgba(0,210,255,0.25)' : 'rgba(0,102,204,0.2)';
+      ctx.fill();
+      ctx.restore();
+
+      // cursor line
+      if (cursorFrac > 0 && cursorFrac < 1) {
+        ctx.beginPath();
+        ctx.moveTo(cursorX, 0);
+        ctx.lineTo(cursorX, h);
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.shadowColor = 'rgba(255,255,255,0.4)';
+        ctx.shadowBlur = 6;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
     }
   }
 
