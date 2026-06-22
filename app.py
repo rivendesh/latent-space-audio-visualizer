@@ -339,4 +339,4 @@ with tab3:
         centroids=pb_centroids,
         rms=pb_rms,
     )
-    st.components.v1.html(html_3d, height=960)
+    st.components.v1.html(html_3d, height=1200)
