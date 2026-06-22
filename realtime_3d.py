@@ -100,6 +100,26 @@ _TEMPLATE = r"""
     width: 100% !important;
     height: 100% !important;
   }
+  #__COMPONENT_ID__-fs-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 20;
+    background: rgba(0,0,0,0.35);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: rgba(255,255,255,0.6);
+    border-radius: 4px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    font-family: sans-serif;
+    transition: opacity 0.2s;
+  }
+  #__COMPONENT_ID__-fs-btn:hover {
+    background: rgba(0,0,0,0.55);
+    color: #fff;
+  }
   .__COMPONENT_ID__-controls {
     display: flex;
     align-items: center;
@@ -211,7 +231,7 @@ _TEMPLATE = r"""
     gap: 10px;
     margin-top: 8px;
     flex-shrink: 0;
-    height: 150px;
+    height: 280px;
   }
   .__COMPONENT_ID__-bottom-item {
     flex: 1;
@@ -262,6 +282,7 @@ _TEMPLATE = r"""
   <div id="__COMPONENT_ID__-inner">
   <div id="__COMPONENT_ID__-viewport">
     <canvas id="__COMPONENT_ID__-three"></canvas>
+    <button id="__COMPONENT_ID__-fs-btn">⛶</button>
   </div>
 
   <div id="__COMPONENT_ID__-bottom">
@@ -1019,6 +1040,23 @@ zoomSlider.addEventListener('input', function() {
   camera.zoom = v / 10;
   camera.updateProjectionMatrix();
 });
+
+// ----- fullscreen toggle -----
+const fsBtn = document.getElementById(id+'-fs-btn');
+fsBtn.addEventListener('click', function() {
+  if (!document.fullscreenElement) {
+    viewport.requestFullscreen();
+  } else {
+    document.exitFullscreen();
+  }
+});
+function onFsChange() {
+  fsBtn.textContent = document.fullscreenElement ? '✕' : '⛶';
+  // resize handled by ResizeObserver on viewport
+}
+document.addEventListener('fullscreenchange', onFsChange);
+document.addEventListener('webkitfullscreenchange', onFsChange);
+document.addEventListener('mozfullscreenchange', onFsChange);
 
 // ----- init -----
 initAudio();

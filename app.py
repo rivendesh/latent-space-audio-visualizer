@@ -378,4 +378,4 @@ with tab3:
         waveform_peaks=pb_peaks,
         is_dark=is_dark,
     )
-    st.components.v1.html(html_3d, height=960)
+    st.components.v1.html(html_3d, height=1100)
