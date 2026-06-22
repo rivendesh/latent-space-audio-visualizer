@@ -50,6 +50,8 @@ if _AUTO_PATH is not None:
 
 st.set_page_config(page_title="Audio Latent Space Visualizer", layout="wide")
 
+HAS_AUTO = "auto_file" in st.session_state
+
 # ---------- inject global CSS ----------
 
 # Scrollable tab content
@@ -65,18 +67,19 @@ section[data-testid="stSidebar"] .stMarkdown code { word-break: break-all; white
 """, unsafe_allow_html=True)
 
 st.title("Audio Latent Space Visualizer")
-st.markdown("Upload an audio file to explore its waveform and 2D latent-space projection in real time.")
 
-# ---------- sidebar: file uploader, mel/hop/playback settings, theme selector ----------
+# ---------- sidebar: file uploader (auto-mode only), mel/hop/playback settings ----------
 with st.sidebar:
     st.header("Controls")
-    uploaded_file = st.file_uploader(
-        "Choose an audio file",
-        type=["wav", "mp3", "flac", "ogg", "m4a", "aiff"],
-    )
-
-    if uploaded_file is None and "auto_file" in st.session_state:
+    if HAS_AUTO:
         st.success(f"Loaded: {st.session_state['auto_file_name']}")
+        uploaded_file = st.file_uploader(
+            "Replace audio file",
+            type=["wav", "mp3", "flac", "ogg", "m4a", "aiff"],
+            key="sidebar_uploader",
+        )
+    else:
+        uploaded_file = None
 
     st.divider()
     st.markdown("### Settings")
@@ -112,6 +115,16 @@ with st.sidebar:
         "audio, then running PCA to project each frame into 2D.  The result is a "
         "trajectory through the latent space that reveals the spectral evolution of the sound."
     )
+
+# ---------- file uploader (main page) when not launched with a CLI argument ----------
+if not HAS_AUTO:
+    main_uf = st.file_uploader(
+        "Choose an audio file",
+        type=["wav", "mp3", "flac", "ogg", "m4a", "aiff"],
+        key="main_uploader",
+    )
+    if main_uf is not None:
+        uploaded_file = main_uf
 
 # ---------- Plotly figure builders for waveform, FFT, and latent-space scatter ----------
 _HIGH_RES_CONFIG = {
@@ -253,7 +266,7 @@ if uploaded_file is not None:
 elif auto_file is not None:
     file_bytes = auto_file
 else:
-    st.info("Upload an audio file in the sidebar to get started.")
+    st.info("Upload an audio file to get started.")
     st.stop()
 
 with st.spinner("Processing audio …"):
