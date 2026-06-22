@@ -426,7 +426,19 @@ function makeDotTexture() {
 }
 const dotTexture = makeDotTexture();
 
-// ----- centroid color map: deep blue (low freq) -> cyan -> yellow -> hot red (high freq) -----
+// ----- time-based color map: cyan -> purple -> red-orange (matches Static Analysis) -----
+var C_START = [0, 210, 255];
+var C_MID = [123, 47, 247];
+var C_END = [255, 107, 107];
+
+function lerpColor(a, b, t) {
+  return [a[0] + (b[0]-a[0])*t, a[1] + (b[1]-a[1])*t, a[2] + (b[2]-a[2])*t];
+}
+function pathColor(t) {
+  if (t < 0.5) return lerpColor(C_START, C_MID, t * 2);
+  return lerpColor(C_MID, C_END, (t - 0.5) * 2);
+}
+// Centroid-based color map for the profile chart (deep blue → cyan → yellow → hot red)
 function centroidColor(t) {
   t = Math.max(0, Math.min(1, t));
   if (t < 0.25) {
@@ -446,9 +458,8 @@ function centroidColor(t) {
 
 const points3d = DATA.points_3d;
 const centroids = DATA.centroids;
-const centroidMean = DATA.centroid_mean;
-const centroidStd = DATA.centroid_std || 1;
 const n = points3d.length;
+var n1 = Math.max(1, n - 1);
 
 // Prefix sums for O(1) running midpoint of drawn segment
 const prefX = new Array(n);
@@ -467,31 +478,56 @@ for (let i = 0; i < n; i++) {
 // Pre-fill geometry arrays
 const posArr = new Float32Array(n * 3);
 const colArr = new Float32Array(n * 3);
+const sizeArr = new Float32Array(n);
+const alphaArr = new Float32Array(n);
 for (let i = 0; i < n; i++) {
   const p = points3d[i];
-  const z = (centroids[i] - centroidMean) / centroidStd;
-  const cf = Math.max(0, Math.min(1, 0.5 + z / 6));
-  const [r, g, b] = centroidColor(cf);
+  const t = i / n1;
+  const [r, g, b] = pathColor(t);
   posArr[i*3] = p[0];
   posArr[i*3+1] = p[1];
   posArr[i*3+2] = p[2];
-  colArr[i*3] = r;
-  colArr[i*3+1] = g;
-  colArr[i*3+2] = b;
+  colArr[i*3] = r / 255;
+  colArr[i*3+1] = g / 255;
+  colArr[i*3+2] = b / 255;
 }
 
-// Points (sharp dots)
+// Points with per-vertex size and alpha via ShaderMaterial
 const pointGeo = new THREE.BufferGeometry();
 pointGeo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
-pointGeo.setAttribute('color', new THREE.BufferAttribute(colArr, 3));
+pointGeo.setAttribute('customColor', new THREE.BufferAttribute(colArr, 3));
+pointGeo.setAttribute('pointSize', new THREE.BufferAttribute(sizeArr, 1));
+pointGeo.setAttribute('pointAlpha', new THREE.BufferAttribute(alphaArr, 1));
 pointGeo.setDrawRange(0, 0);
-const pointMat = new THREE.PointsMaterial({
-  size: 0.12,
-  map: dotTexture,
-  vertexColors: true,
-  sizeAttenuation: true,
+
+const pointMat = new THREE.ShaderMaterial({
+  uniforms: {
+    pointTexture: { value: dotTexture },
+  },
+  vertexShader: [
+    'attribute float pointSize;',
+    'attribute float pointAlpha;',
+    'attribute vec3 customColor;',
+    'varying vec3 vColor;',
+    'varying float vAlpha;',
+    'void main() {',
+    '  vColor = customColor;',
+    '  vAlpha = pointAlpha;',
+    '  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);',
+    '  gl_PointSize = pointSize * (300.0 / -mvPosition.z);',
+    '  gl_Position = projectionMatrix * mvPosition;',
+    '}',
+  ].join('\n'),
+  fragmentShader: [
+    'uniform sampler2D pointTexture;',
+    'varying vec3 vColor;',
+    'varying float vAlpha;',
+    'void main() {',
+    '  vec4 tex = texture2D(pointTexture, gl_PointCoord);',
+    '  gl_FragColor = vec4(vColor, tex.a * vAlpha);',
+    '}',
+  ].join('\n'),
   transparent: true,
-  opacity: 1,
   depthWrite: false,
   blending: THREE.AdditiveBlending,
 });
@@ -620,8 +656,8 @@ function buildLegend() {
   const ctx = legendBar.getContext('2d');
   for (var i = 0; i < legendBar.width; i++) {
     var t = i / legendBar.width;
-    var [r, g, b] = centroidColor(t);
-    ctx.fillStyle = 'rgb(' + ((r*255)<<0) + ',' + ((g*255)<<0) + ',' + ((b*255)<<0) + ')';
+    var [r, g, b] = pathColor(t);
+    ctx.fillStyle = 'rgb(' + ((r)<<0) + ',' + ((g)<<0) + ',' + ((b)<<0) + ')';
     ctx.fillRect(i, 0, 1, legendBar.height);
   }
   legendLow.textContent = (DATA.centroid_min / 1000).toFixed(1) + ' kHz';
@@ -901,9 +937,21 @@ function animate() {
   const progress = Math.min(Math.max(t / DATA.duration, 0), 1);
   const drawCount = Math.min(Math.floor(progress * n), n);
 
-  // Update point draw range — recency is handled by PointsMaterial blending
+  // Update point draw range
   pointGeo.setDrawRange(0, drawCount);
-  pointMat.size = 0.06 + 0.1 * Math.min(progress * 1.5, 1);
+
+  // Per-point recency scaling (matches 2D Player: quadratic falloff)
+  for (var i = 0; i < drawCount; i++) {
+    var recency = Math.pow((i + 1) / (drawCount || 1), 2);
+    sizeArr[i] = 0.06 + 0.12 * recency;
+    alphaArr[i] = 0.3 + 0.7 * recency;
+  }
+  for (var i = drawCount; i < n; i++) {
+    sizeArr[i] = 0;
+    alphaArr[i] = 0;
+  }
+  pointGeo.attributes.pointSize.needsUpdate = true;
+  pointGeo.attributes.pointAlpha.needsUpdate = true;
 
   // Update trajectory line
   lineGeo.setDrawRange(0, Math.max(0, drawCount - 1));

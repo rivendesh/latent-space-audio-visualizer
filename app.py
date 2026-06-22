@@ -345,6 +345,7 @@ with tab2:
     st.components.v1.html(html, height=680)
 
 with tab3:
+    st.subheader("3D Latent Space Manifold")
     html_3d = build_3d_component(
         audio=pb_audio,
         sr=sr,
@@ -354,4 +355,4 @@ with tab3:
         rms=pb_rms,
         waveform_peaks=pb_peaks,
     )
-    st.components.v1.html(html_3d, height=1100)
+    st.components.v1.html(html_3d, height=1120)
