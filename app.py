@@ -66,8 +66,20 @@ if not is_dark:
     }
     .stSidebar { background: #e8eaed !important; }
     .stSidebar .stMarkdown { color: #333 !important; }
+    .stSidebar .stMarkdown p { word-break: break-word; overflow-wrap: break-word; }
+    .stSidebar .stMarkdown code { word-break: break-all; white-space: pre-wrap; }
     </style>
     """, unsafe_allow_html=True)
+
+# Scrollable tab content
+st.markdown("""
+<style>
+div[data-testid="stTabContent"] > div {
+    overflow-y: auto;
+    max-height: calc(100vh - 200px);
+}
+</style>
+""", unsafe_allow_html=True)
 
 st.title("Audio Latent Space Visualizer")
 st.markdown("Upload an audio file to explore its waveform and 2D latent-space projection in real time.")
@@ -366,7 +378,7 @@ with tab3:
         rms=pb_rms,
         is_dark=is_dark,
     )
-    st.components.v1.html(html_3d, height=500)
+    st.components.v1.html(html_3d, height=400)
 
     st.markdown("### Waveform")
     html_wave = build_waveform_component(
@@ -374,7 +386,7 @@ with tab3:
         duration=len(pb_audio) / sr,
         is_dark=is_dark,
     )
-    st.components.v1.html(html_wave, height=100)
+    st.components.v1.html(html_wave, height=80)
 
     st.markdown("### Spectral Centroid vs RMS Amplitude")
     html_prof = build_profile_component(
@@ -386,4 +398,4 @@ with tab3:
         rms=pb_rms,
         is_dark=is_dark,
     )
-    st.components.v1.html(html_prof, height=200)
+    st.components.v1.html(html_prof, height=180)
