@@ -261,6 +261,9 @@ _TEMPLATE = r"""
     <label>Orbit</label>
     <input type="range" id="__COMPONENT_ID__-orbit" min="0" max="5" step="0.1" value="0.4" style="width:64px">
     <span class="val" id="__COMPONENT_ID__-orbit-val">0.4</span>
+    <label>Slc</label>
+    <input type="range" id="__COMPONENT_ID__-slices" min="2" max="20" value="5" style="width:64px">
+    <span class="val" id="__COMPONENT_ID__-slices-val">5</span>
     <span class="time" id="__COMPONENT_ID__-time">0:00 / 0:00</span>
     <button class="theme-btn" id="__COMPONENT_ID__-theme">&#127769;</button>
   </div>
@@ -293,6 +296,8 @@ const speedSlider = document.getElementById(id+'-speed');
 const speedVal = document.getElementById(id+'-speed-val');
 const orbitSlider = document.getElementById(id+'-orbit');
 const orbitVal = document.getElementById(id+'-orbit-val');
+const slicesSlider = document.getElementById(id+'-slices');
+const slicesVal = document.getElementById(id+'-slices-val');
 const timeDisplay = document.getElementById(id+'-time');
 const waveCanvas = document.getElementById(id+'-wave');
 const profCanvas = document.getElementById(id+'-prof');
@@ -346,8 +351,16 @@ function applyTheme(dark) {
   wrapEl.classList.toggle('light', !dark);
   const bg = dark ? 0x070714 : 0xf0f0f0;
   scene.background = new THREE.Color(bg);
-  gridHelper.material.color.set(dark ? 0x444488 : 0xcccccc);
-  gridHelper.material.opacity = dark ? 0.4 : 0.5;
+  const gridCol = dark ? 0x6666aa : 0xaaaaaa;
+  const gridCol2 = dark ? 0x444477 : 0x888888;
+  [gridHelper, gridSide, gridBack].forEach(function(g) {
+    g.material.color.set(dark ? 0x6666aa : 0xaaaaaa);
+    g.material.opacity = dark ? 0.55 : 0.5;
+  });
+  timePlaneMat.color.set(dark ? 0x6666aa : 0x888888);
+  timePlaneMat.opacity = dark ? 0.06 : 0.08;
+  timePlaneEdgeMat.color.set(dark ? 0x8888cc : 0x999999);
+  timePlaneEdgeMat.opacity = dark ? 0.12 : 0.15;
   themeBtn.innerHTML = dark ? '&#127769;' : '&#9728;';
 }
 
@@ -378,18 +391,21 @@ function makeDotTexture() {
 }
 const dotTexture = makeDotTexture();
 
-// ----- centroid color map: blue (low freq) -> cyan -> magenta -> red (high freq) -----
+// ----- centroid color map: deep blue (low freq) -> cyan -> yellow -> hot red (high freq) -----
 function centroidColor(t) {
   t = Math.max(0, Math.min(1, t));
-  if (t < 0.33) {
-    const u = t / 0.33;
-    return [0, 0.4 + 0.6*u, 1];
-  } else if (t < 0.66) {
-    const u = (t - 0.33) / 0.33;
-    return [0.6*u, 0.6 + 0.4*u, 1 - u];
+  if (t < 0.25) {
+    const u = t / 0.25;
+    return [0.05, 0.05 + 0.35*u, 0.5 + 0.5*u];
+  } else if (t < 0.5) {
+    const u = (t - 0.25) / 0.25;
+    return [0, 0.4 + 0.6*u, 1.0 - 0.3*u];
+  } else if (t < 0.75) {
+    const u = (t - 0.5) / 0.25;
+    return [0.8*u, 1.0 - 0.5*u, 0.7 - 0.7*u];
   } else {
-    const u = (t - 0.66) / 0.34;
-    return [0.6 + 0.4*u, 0.4*(1-u), 0.2*(1-u)];
+    const u = (t - 0.75) / 0.25;
+    return [0.8 + 0.2*u, 0.5 - 0.4*u, 0];
   }
 }
 
@@ -495,7 +511,59 @@ gridHelper.position.y = -axExt;
 gridHelper.material.transparent = true;
 gridHelper.material.opacity = 0.55;
 scene.add(gridHelper);
+
+// Side grid (PC2-Time plane at x=-axExt)
+const gridSide = new THREE.GridHelper(8, 16, 0x6666aa, 0x444477);
+gridSide.position.x = -axExt;
+gridSide.rotation.z = Math.PI / 2;
+gridSide.material.transparent = true;
+gridSide.material.opacity = 0.3;
+scene.add(gridSide);
+
+// Back grid (PC1-PC2 plane at z=0)
+const gridBack = new THREE.GridHelper(8, 16, 0x6666aa, 0x444477);
+gridBack.position.z = 0;
+gridBack.rotation.x = Math.PI / 2;
+gridBack.material.transparent = true;
+gridBack.material.opacity = 0.3;
+scene.add(gridBack);
+
+// Time slice planes — vertical XY planes at regular z intervals
+const timePlaneGroup = new THREE.Group();
+scene.add(timePlaneGroup);
+const timePlaneMat = new THREE.MeshBasicMaterial({
+  color: 0x6666aa,
+  transparent: true,
+  opacity: 0.06,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+});
+const timePlaneEdgeMat = new THREE.LineBasicMaterial({
+  color: 0x8888cc,
+  transparent: true,
+  opacity: 0.12,
+});
 applyTheme(isDark);
+
+// ----- build time slice planes -----
+function buildTimePlanes(step) {
+  while (timePlaneGroup.children.length) {
+    const c = timePlaneGroup.children[0];
+    c.geometry.dispose();
+    timePlaneGroup.remove(c);
+  }
+  for (let z = 0; z <= 1.001; z += step) {
+    const geo = new THREE.PlaneGeometry(axExt * 2, axExt * 2);
+    const mesh = new THREE.Mesh(geo, timePlaneMat);
+    mesh.position.set(0, 0, z);
+    timePlaneGroup.add(mesh);
+    const edges = new THREE.EdgesGeometry(geo);
+    const line = new THREE.LineSegments(edges, timePlaneEdgeMat);
+    line.position.set(0, 0, z);
+    timePlaneGroup.add(line);
+  }
+}
+buildTimePlanes(0.2);
 
 // ----- centroid color legend (draw to profile legend bar) -----
 function buildLegend() {
@@ -866,6 +934,12 @@ orbitSlider.addEventListener('input', function() {
   const v = parseFloat(this.value);
   orbitVal.textContent = v.toFixed(1);
   controls.autoRotateSpeed = v;
+});
+
+slicesSlider.addEventListener('input', function() {
+  const v = parseInt(this.value);
+  slicesVal.textContent = v;
+  buildTimePlanes(1 / v);
 });
 
 // ----- init -----
