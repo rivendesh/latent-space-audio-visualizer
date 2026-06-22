@@ -176,7 +176,7 @@ _TEMPLATE = r"""
     gap: 10px;
     margin-top: 8px;
     flex-shrink: 0;
-    height: 130px;
+    height: 150px;
   }
   .__COMPONENT_ID__-bottom-item {
     flex: 1;
@@ -318,7 +318,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x070714);
 
 const camera = new THREE.PerspectiveCamera(45, viewport.clientWidth / viewport.clientHeight, 0.1, 100);
-camera.position.set(6, 4, 6);
+camera.position.set(7, 5, 7);
 
 const renderer = new THREE.WebGLRenderer({
   canvas: threeCanvas,
@@ -484,16 +484,16 @@ function addAxis(from, to, color, labelText) {
   scene.add(lbl);
 }
 
-const axExt = 2.5;
+const axExt = 3.0;
 addAxis([-axExt, 0, 0], [axExt, 0, 0], 0x00d2ff, 'PC1');
 addAxis([0, -axExt, 0], [0, axExt, 0], 0x00d2ff, 'PC2');
 addAxis([0, 0, -0.1], [0, 0, 1.1], 0x00d2ff, 'Time');
 
 // grid helper
-const gridHelper = new THREE.GridHelper(6, 12, 0x444488, 0x222244);
+const gridHelper = new THREE.GridHelper(8, 16, 0x6666aa, 0x444477);
 gridHelper.position.y = -axExt;
 gridHelper.material.transparent = true;
-gridHelper.material.opacity = 0.4;
+gridHelper.material.opacity = 0.55;
 scene.add(gridHelper);
 applyTheme(isDark);
 
