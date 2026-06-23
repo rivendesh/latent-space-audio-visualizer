@@ -100,7 +100,7 @@ streamlit run app.py -- -f assets/data/test_intricate.wav
 | Fade               | 3.0     | Recency-falloff exponent (0.5–10). Higher = older nodes fade faster. |
 | Pan                | Midpoint| Orbit-center tracking mode: Midpoint (lerp toward running midpoint) or None (fixed). |
 
-## Key Problems Solved
+# Development Issues
 
 ### 200 MB Streamlit message size limit
 Streamlit caps `st.components.v1.html` data at 200 MB. Base64-encoded WAV audio for long files easily exceeds this. Fix: truncate audio to a configurable max playback duration (default 120 s) before embedding. The Static Analysis tab continues to use the full file.
