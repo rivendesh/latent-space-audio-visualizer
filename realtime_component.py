@@ -45,7 +45,7 @@ _HTML_TEMPLATE = """
   </div>
 
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-    <button id="__COMPONENT_ID__-play" style="background:linear-gradient(135deg,#00d2ff,#3a7bd5);border:none;color:#000;padding:8px 20px;border-radius:6px;cursor:pointer;font-weight:700;font-size:15px;letter-spacing:0.3px;min-width:84px">&#9654; Play</button>
+    <button id="__COMPONENT_ID__-play" style="background:linear-gradient(135deg,#00d2ff,#3a7bd5);border:none;color:#000;padding:8px 20px;border-radius:6px;cursor:pointer;font-weight:700;font-size:15px;letter-spacing:0.3px;min-width:84px">&#9654;</button>
     <div style="flex:1;position:relative">
       <input type="range" id="__COMPONENT_ID__-seek" min="0" max="1000" value="0" style="width:100%;height:4px;-webkit-appearance:none;appearance:none;background:#333;border-radius:2px;outline:none;cursor:pointer;margin:0">
     </div>
@@ -58,6 +58,18 @@ _HTML_TEMPLATE = """
     <label style="font-size:13px;color:#999;white-space:nowrap">Speed</label>
     <input type="range" id="__COMPONENT_ID__-speed" min="0.25" max="3" step="0.25" value="1" style="width:80px;height:4px;-webkit-appearance:none;appearance:none;background:#333;border-radius:2px;outline:none;cursor:pointer">
     <span id="__COMPONENT_ID__-speed-val" style="font-size:13px;color:#888;min-width:36px;font-family:'SF Mono',monospace">1x</span>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:12px;margin-top:4px">
+    <label style="font-size:13px;color:#999;white-space:nowrap">Fade</label>
+    <input type="range" id="__COMPONENT_ID__-fade" min="5" max="100" step="5" value="20" style="width:60px;height:4px;-webkit-appearance:none;appearance:none;background:#333;border-radius:2px;outline:none;cursor:pointer">
+    <span id="__COMPONENT_ID__-fade-val" style="font-size:13px;color:#888;min-width:28px;font-family:'SF Mono',monospace">2.0</span>
+    <label style="font-size:13px;color:#999;white-space:nowrap">Trail</label>
+    <input type="range" id="__COMPONENT_ID__-trail" min="1" max="50" value="15" style="width:60px;height:4px;-webkit-appearance:none;appearance:none;background:#333;border-radius:2px;outline:none;cursor:pointer">
+    <span id="__COMPONENT_ID__-trail-val" style="font-size:13px;color:#888;min-width:28px;font-family:'SF Mono',monospace">15</span>
+    <label style="font-size:13px;color:#999;white-space:nowrap">Zoom</label>
+    <input type="range" id="__COMPONENT_ID__-zoom" min="5" max="40" value="10" style="width:60px;height:4px;-webkit-appearance:none;appearance:none;background:#333;border-radius:2px;outline:none;cursor:pointer">
+    <span id="__COMPONENT_ID__-zoom-val" style="font-size:13px;color:#888;min-width:28px;font-family:'SF Mono',monospace">1.0</span>
   </div>
 </div>
 
@@ -87,6 +99,9 @@ _HTML_TEMPLATE = """
   var currentSpeed = 1.0;
   var currentVol = 0.75;
   var sourceGen = 0;
+  var fadeExp = 2.0;
+  var trailLen = 15;
+  var zoomLevel = 1.0;
 
   function sizeCanvas(canvas) {
     var rect = canvas.getBoundingClientRect();
@@ -139,7 +154,7 @@ _HTML_TEMPLATE = """
       if (isPlaying && myGen === sourceGen) {
         isPlaying = false;
         pausedAt = DATA.duration;
-        playBtn.innerHTML = '&#9654; Play';
+        playBtn.innerHTML = '&#9654;';
       }
     };
     return s;
@@ -155,7 +170,7 @@ _HTML_TEMPLATE = """
     source.start(0, pausedAt);
     startTime = audioCtx.currentTime;
     isPlaying = true;
-    playBtn.innerHTML = '&#9646;&#9646; Pause';
+    playBtn.innerHTML = '&#9208;';
 
     if (!animId) tick();
   }
@@ -168,7 +183,7 @@ _HTML_TEMPLATE = """
       source = null;
     }
     isPlaying = false;
-    playBtn.innerHTML = '&#9654; Play';
+    playBtn.innerHTML = '&#9654;';
   }
 
   function togglePlay() {
@@ -335,7 +350,7 @@ _HTML_TEMPLATE = """
     var yMid = (yMin + yMax) / 2;
     var xScale = w / (xRange * (1+pad*2));
     var yScale = h / (yRange * (1+pad*2));
-    var scale = Math.min(xScale, yScale);
+    var scale = Math.min(xScale, yScale) * zoomLevel;
     var vw = xRange * (1+pad*2) * scale;
     var vh = yRange * (1+pad*2) * scale;
     var ox = (w - vw) / 2;
@@ -410,7 +425,7 @@ _HTML_TEMPLATE = """
       var [x2,y2] = toScreen(path[i+1][0], path[i+1][1]);
       var t = i / (n-1);
       var col = pathColor(t);
-      var recency = Math.pow((i + 1) / (drawCount || 1), 2);
+      var recency = Math.pow((i + 1) / (drawCount || 1), fadeExp);
       var segW = 1 + 2 * recency;
       var segA = 0.2 + 0.6 * recency;
       ctx.beginPath();
@@ -427,7 +442,7 @@ _HTML_TEMPLATE = """
       var [px, py] = toScreen(path[i][0], path[i][1]);
       var t = i / (n-1);
       var col = pathColor(t);
-      var recency = Math.pow((i + 1) / (pointCount || 1), 2);
+      var recency = Math.pow((i + 1) / (pointCount || 1), fadeExp);
       var dotR = 1 + 2.5 * recency;
       ctx.beginPath();
       ctx.arc(px, py, dotR, 0, Math.PI*2);
@@ -460,7 +475,6 @@ _HTML_TEMPLATE = """
 
     // trail
     var curIdx = Math.floor(progress * (n-1));
-    var trailLen = 15;
     for (var i=1; i<=trailLen; i++) {
       var idx = Math.max(0, curIdx - i);
       var tFrac = 1 - i/trailLen;
@@ -496,7 +510,7 @@ _HTML_TEMPLATE = """
     if (isPlaying && t >= DATA.duration) {
       isPlaying = false;
       pausedAt = DATA.duration;
-      playBtn.innerHTML = '&#9654; Play';
+      playBtn.innerHTML = '&#9654;';
       animId = null;
       return;
     }
@@ -533,6 +547,29 @@ _HTML_TEMPLATE = """
     if (source) {
       source.playbackRate.setValueAtTime(currentSpeed, audioCtx.currentTime);
     }
+  });
+
+  var fadeSlider = document.getElementById(id+'-fade');
+  var fadeVal = document.getElementById(id+'-fade-val');
+  fadeSlider.addEventListener('input', function() {
+    var v = parseFloat(this.value);
+    fadeExp = v / 10;
+    fadeVal.textContent = fadeExp.toFixed(1);
+  });
+
+  var trailSlider = document.getElementById(id+'-trail');
+  var trailVal = document.getElementById(id+'-trail-val');
+  trailSlider.addEventListener('input', function() {
+    trailLen = parseInt(this.value);
+    trailVal.textContent = trailLen;
+  });
+
+  var zoomSlider = document.getElementById(id+'-zoom');
+  var zoomVal = document.getElementById(id+'-zoom-val');
+  zoomSlider.addEventListener('input', function() {
+    var v = parseInt(this.value);
+    zoomLevel = v / 10;
+    zoomVal.textContent = zoomLevel.toFixed(1);
   });
 
   // init
