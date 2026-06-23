@@ -439,7 +439,7 @@ function makeDotTexture() {
 }
 const dotTexture = makeDotTexture();
 
-// ----- time-based color map: cyan -> purple -> red-orange (matches Static Analysis) -----
+// ----- spectral-centroid color map: cyan -> purple -> red-orange -----
 var C_START = [0, 210, 255];
 var C_MID = [123, 47, 247];
 var C_END = [255, 107, 107];
@@ -476,10 +476,13 @@ const posArr = new Float32Array(n * 3);
 const colArr = new Float32Array(n * 3);
 const sizeArr = new Float32Array(n);
 const alphaArr = new Float32Array(n);
+const cMin = DATA.centroid_min, cMax = DATA.centroid_max, cRange = cMax - cMin || 1;
+const nCent = DATA.centroids.length;
 for (let i = 0; i < n; i++) {
   const p = points3d[i];
-  const t = i / n1;
-  const [r, g, b] = pathColor(t);
+  const ci = Math.min(i, nCent - 1);
+  const cent = (DATA.centroids[ci] - cMin) / cRange;
+  const [r, g, b] = pathColor(cent);
   posArr[i*3] = p[0];
   posArr[i*3+1] = p[1];
   posArr[i*3+2] = p[2];
@@ -805,11 +808,12 @@ function drawProfile(t) {
 
   var n = DATA.centroids.length;
 
-  // all data points, coloured by time position (matches 3D node colors)
+  // all data points, coloured by spectral centroid
+  var cMin = DATA.centroid_min, cMax = DATA.centroid_max, cRange = cMax - cMin || 1;
   for (var i = 0; i < n; i++) {
     var cx = toX(DATA.centroids[i]);
     var cy = toY(DATA.rms[i]);
-    var col = pathColor(i / (n - 1));
+    var col = pathColor((DATA.centroids[i] - cMin) / cRange);
     ctx.beginPath();
     ctx.arc(cx, cy, 2, 0, Math.PI*2);
     ctx.fillStyle = 'rgba(' + (col[0]<<0) + ',' + (col[1]<<0) + ',' + (col[2]<<0) + ',0.5)';
