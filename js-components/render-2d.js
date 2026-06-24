@@ -407,13 +407,13 @@ function tick() {
       pausedAt = 0;
       source = null;
       play();
+    } else {
+      isPlaying = false;
+      pausedAt = DATA.duration;
+      playBtn.innerHTML = '&#9654;';
+      animId = null;
       return;
     }
-    isPlaying = false;
-    pausedAt = DATA.duration;
-    playBtn.innerHTML = '&#9654;';
-    animId = null;
-    return;
   }
   animId = requestAnimationFrame(tick);
 }
