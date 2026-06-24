@@ -67,18 +67,10 @@ function getCurrentTime() {
 
 function createSource() {
   sourceGen++;
-  var myGen = sourceGen;
   var s = audioCtx.createBufferSource();
   s.buffer = audioBuffer;
   s.playbackRate.setValueAtTime(currentSpeed, audioCtx.currentTime);
   s.connect(gainNode);
-  s.onended = function() {
-    if (isPlaying && myGen === sourceGen) {
-      isPlaying = false;
-      pausedAt = DATA.duration;
-      playBtn.innerHTML = '&#9654;';
-    }
-  };
   return s;
 }
 
