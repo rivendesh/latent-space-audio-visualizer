@@ -3,7 +3,7 @@ import json
 import uuid
 from pathlib import Path
 
-from audio_utils import audio_to_wav_bytes
+from utils.audio_utils import audio_to_wav_bytes
 
 
 _JS_DIR = Path(__file__).parent / "js-components"

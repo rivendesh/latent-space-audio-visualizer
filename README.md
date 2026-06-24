@@ -22,19 +22,67 @@ A Streamlit-based interactive tool that extracts spectral features from audio fi
 
 ```
 .
-├── app.py                  # Streamlit entry point, sidebar, tabs, plotting helpers, CSS
-├── audio_processor.py      # Audio loading, resampling, waveform peaks, WAV byte encoding
-├── latent_encoder.py       # Mel-spectrogram → PCA encoder, spectral centroid + RMS
-├── realtime_component.py   # 2D real-time player HTML/JS template
-├── realtime_3d.py          # 3D manifold HTML/JS template (Three.js + Web Audio)
-├── requirements.txt        # Python dependencies
+├── app.py                      # Streamlit entry point — sidebar, tabs, CSS, orchestration
+├── static_analysis.py          # Tab 1: Plotly figure builders + download helpers
+├── render_2d.py                # Tab 2: 2D Player HTML template builder
+├── render_3d.py                # Tab 3: 3D Manifold HTML template builder (Three.js + Web Audio)
+├── utils/
+│   ├── __init__.py
+│   ├── audio_utils.py          # Audio loading, resampling, waveform peaks, WAV byte encoding
+│   └── latent_utils.py         # Mel-spectrogram → PCA encoder, spectral centroid + RMS
+├── js-components/
+│   ├── render-2d.js            # Tab 2: 2D latent + waveform canvas rendering + playback
+│   └── render-3d.js            # Tab 3: Three.js 3D scene, orbit controls, profile charts
+├── requirements.txt            # Python dependencies
 ├── assets/
-│   ├── reference-dashboard.png  # Design reference
-│   └── data/                    # Sample audio files
-│       ├── test_sweep.wav       # 10s sine sweep
-│       └── test_intricate.wav   # 30s chord progression + arpeggio + clicks
+│   ├── reference-dashboard.png # Design reference
+│   └── data/                   # Sample audio files
+│       ├── test_sweep.wav      # 10s sine sweep
+│       └── test_intricate.wav  # 30s chord progression + arpeggio + clicks
 ├── LICENSE
 └── README.md
+```
+
+### File summaries
+
+| File | Role |
+|------|------|
+| `app.py` | Entry point. Parses CLI args, renders sidebar (file upload + settings sliders), loads audio, runs the encoder, creates 3 tabs. Passes data to each tab's render function. |
+| `static_analysis.py` | Tab 1 — builds Plotly figures (latent scatter, waveform, FFT spectrum) with dark theme styling and high-res download buttons. |
+| `render_2d.py` | Tab 2 — reads `js-components/render-2d.js`, serialises audio + latent data as JSON, produces an HTML string via template substitution for `st.components.v1.html`. |
+| `render_3d.py` | Tab 3 — reads `js-components/render-3d.js`, serialises 3D point cloud + centroid/RMS data, produces the HTML string with an importmap for Three.js CDN. |
+| `utils/audio_utils.py` | Shared: `load_audio()` (librosa → mono 22 kHz), `compute_waveform_peaks()` (downsampled min/max pairs for canvas), `audio_to_wav_bytes()` (float array → WAV bytes via soundfile). |
+| `utils/latent_utils.py` | Shared: `LatentEncoder` class — computes mel-spectrogram → PCA (2 components) → z-scored latent points, plus per-frame spectral centroid and RMS. |
+| `js-components/render-2d.js` | 2D player JS — AudioContext playback, 2D latent scatter + waveform canvas drawing, seek/volume/speed/fade/trail/zoom controls. |
+| `js-components/render-3d.js` | 3D viewer ES module — Three.js scene with `ShaderMaterial` point cloud, OrbitControls, time-slice planes, waveform + spectral centroid canvases. |
+
+### App flow
+
+```
+Upload / CLI audio file
+         │
+         ▼
+  app.py: load_audio() ──► audio_utils.py (librosa → 22 kHz mono)
+         │
+         ▼
+  app.py: LatentEncoder.encode() ──► latent_utils.py (mel-spec → PCA → centroids + RMS)
+         │
+         ├──► tab1: static_analysis.py ──► Plotly figures (latent, waveform, FFT)
+         │
+         │              truncate to max_playback seconds
+         │                         │
+         │        ┌────────────────┼────────────────┐
+         │        ▼                ▼                 ▼
+         │   tab2: render_2d.py              tab3: render_3d.py
+         │        │                            │
+         │        │  read render-2d.js          │  read render-3d.js
+         │        │  inline as __COMPONENT_JS__  │  inline as __COMPONENT_JS__
+         │        │                            │
+         │        ▼                            ▼
+         │   st.components.v1.html         st.components.v1.html
+         │   (canvas + AudioContext)       (Three.js scene + Web Audio)
+         ▼
+  Browser renders 60 fps animation loop synchronized with playback
 ```
 
 ## How It Works

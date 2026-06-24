@@ -6,8 +6,8 @@ from pathlib import Path
 import streamlit as st
 import numpy as np
 
-from audio_utils import load_audio, compute_waveform_peaks
-from latent_encoder import LatentEncoder
+from utils.audio_utils import load_audio, compute_waveform_peaks
+from utils.latent_utils import LatentEncoder
 from static_analysis import render_static_analysis_tab
 from render_2d import build_render_2d
 from render_3d import build_render_3d
