@@ -608,18 +608,12 @@ function animate() {
   if (t >= DATA.duration) {
     if (loopEnabled) {
       pausedAt = 0;
-      if (isPlaying) {
-        if (source) { source.stop(); source.disconnect(); source = null; }
-        source = createSource();
-        source.start(0, 0);
-        startTime = audioCtx.currentTime;
-      }
+      source = null;
+      play();
     } else {
-      if (isPlaying) {
-        isPlaying = false;
-        playBtn.innerHTML = '&#9654;';
-      }
+      isPlaying = false;
       pausedAt = DATA.duration;
+      playBtn.innerHTML = '&#9654;';
     }
   }
   animId = requestAnimationFrame(animate);

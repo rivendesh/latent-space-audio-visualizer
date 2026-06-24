@@ -405,7 +405,7 @@ function tick() {
   if (t >= DATA.duration) {
     if (loopEnabled) {
       pausedAt = 0;
-      if (source) { source.stop(); source.disconnect(); source = null; }
+      source = null;
       play();
       return;
     }
