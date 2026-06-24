@@ -53,6 +53,7 @@ _HTML_TEMPLATE = """
 
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
     <button id="__COMPONENT_ID__-play" style="background:linear-gradient(135deg,#00d2ff,#3a7bd5);border:none;color:#000;padding:8px 20px;border-radius:6px;cursor:pointer;font-weight:700;font-size:15px;letter-spacing:0.3px;min-width:84px">&#9654;</button>
+    <button id="__COMPONENT_ID__-loop" style="background:linear-gradient(135deg,#00d2ff,#3a7bd5);border:none;color:#000;padding:8px 12px;border-radius:6px;cursor:pointer;font-weight:700;font-size:15px;opacity:0.4;line-height:1">&#8634;</button>
     <div style="flex:1;position:relative">
       <input type="range" id="__COMPONENT_ID__-seek" min="0" max="1000" value="0" style="width:100%;height:4px;-webkit-appearance:none;appearance:none;background:#333;border-radius:2px;outline:none;cursor:pointer;margin:0">
     </div>

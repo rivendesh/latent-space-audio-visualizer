@@ -136,11 +136,17 @@ else:
     st.info("Upload an audio file to get started.")
     st.stop()
 
-with st.spinner("Processing audio …"):
+@st.cache_data
+def _process_audio(file_bytes, n_mels, hop_length):
     audio, sr = load_audio(file_bytes)
     encoder = LatentEncoder(n_mels=n_mels, hop_length=hop_length)
     latent_points, latent_times, centroids, rms = encoder.encode(audio, sr)
     waveform_peaks = compute_waveform_peaks(audio)
+    expl_var = sum(encoder.explained_variance_ratio) if encoder.explained_variance_ratio is not None else None
+    return audio, sr, latent_points, latent_times, centroids, rms, waveform_peaks, expl_var
+
+with st.spinner("Processing audio …"):
+    audio, sr, latent_points, latent_times, centroids, rms, waveform_peaks, expl_var_ratio = _process_audio(file_bytes, n_mels, hop_length)
 
 duration = len(audio) / sr
 
@@ -149,13 +155,13 @@ col_m1, col_m2, col_m3, col_m4 = st.columns(4)
 col_m1.metric("Duration", f"{duration:.1f}s")
 col_m2.metric("Sample Rate", f"{sr} Hz")
 col_m3.metric("Latent Frames", f"{len(latent_points)}")
-col_m4.metric("Expl. Variance (2D)", f"{sum(encoder.explained_variance_ratio):.1%}" if encoder.explained_variance_ratio else "—")
+col_m4.metric("Expl. Variance (2D)", f"{expl_var_ratio:.1%}" if expl_var_ratio else "—")
 
 # ---------- tabs: Static Analysis | Real-Time Player | 3D Render ----------
 tab1, tab2, tab3 = st.tabs(["Static Analysis", "2D Player", "3D Manifold"])
 
 with tab1:
-    render_static_analysis_tab(audio, sr, latent_points, file_bytes)
+    render_static_analysis_tab(audio, sr, latent_points, latent_times, file_bytes)
 
 # ---------- truncate audio and latent data to max_playback for the real-time tabs ----------
 max_samples = int(max_playback * sr)

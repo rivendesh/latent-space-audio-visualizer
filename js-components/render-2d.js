@@ -22,6 +22,8 @@ var sourceGen = 0;
 var fadeExp = 2.0;
 var trailLen = 15;
 var zoomLevel = 1.0;
+var loopEnabled = false;
+var loopBtn = document.getElementById(id+'-loop');
 
 function sizeCanvas(canvas) {
   var rect = canvas.getBoundingClientRect();
@@ -146,7 +148,7 @@ function getLatentPos(time) {
 function lerpColor(a, b, t) {
   return [
     a[0] + (b[0]-a[0])*t,
-    a[1] + (b[1]-b[1])*t,
+    a[1] + (b[1]-a[1])*t,
     a[2] + (b[2]-a[2])*t
   ];
 }
@@ -248,13 +250,7 @@ function drawLatent(ctx, w, h, currentTime) {
   var n = path.length;
   if (n < 2) return;
 
-  var xMin=Infinity, xMax=-Infinity, yMin=Infinity, yMax=-Infinity;
-  for (var pi=0; pi<n; pi++) {
-    if (path[pi][0] < xMin) xMin = path[pi][0];
-    if (path[pi][0] > xMax) xMax = path[pi][0];
-    if (path[pi][1] < yMin) yMin = path[pi][1];
-    if (path[pi][1] > yMax) yMax = path[pi][1];
-  }
+  var xMin=_bounds.xMin, xMax=_bounds.xMax, yMin=_bounds.yMin, yMax=_bounds.yMax;
   var pad = 0.04;
   var xRange = (xMax - xMin) || 1;
   var yRange = (yMax - yMin) || 1;
@@ -406,7 +402,13 @@ function tick() {
 
   updateUI(t);
 
-  if (isPlaying && t >= DATA.duration) {
+  if (t >= DATA.duration) {
+    if (loopEnabled) {
+      pausedAt = 0;
+      if (source) { source.stop(); source.disconnect(); source = null; }
+      play();
+      return;
+    }
     isPlaying = false;
     pausedAt = DATA.duration;
     playBtn.innerHTML = '&#9654;';
@@ -417,6 +419,23 @@ function tick() {
 }
 
 playBtn.addEventListener('click', togglePlay);
+
+loopBtn.addEventListener('click', function() {
+  loopEnabled = !loopEnabled;
+  loopBtn.style.opacity = loopEnabled ? '1' : '0.4';
+  loopBtn.style.background = loopEnabled ? 'linear-gradient(135deg,#ffd700,#ff8c00)' : 'linear-gradient(135deg,#00d2ff,#3a7bd5)';
+});
+
+document.addEventListener('keydown', function(e) {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  switch (e.code) {
+    case 'Space': e.preventDefault(); togglePlay(); break;
+    case 'ArrowLeft': seek(Math.max(0, pausedAt - 5)); break;
+    case 'ArrowRight': seek(Math.min(DATA.duration, pausedAt + 5)); break;
+    case 'ArrowUp': volSlider.value = Math.min(100, parseInt(volSlider.value) + 5); volSlider.dispatchEvent(new Event('input')); break;
+    case 'ArrowDown': volSlider.value = Math.max(0, parseInt(volSlider.value) - 5); volSlider.dispatchEvent(new Event('input')); break;
+  }
+});
 
 seekBar.addEventListener('input', function() {
   var time = (parseFloat(this.value) / 1000) * DATA.duration;
@@ -469,6 +488,17 @@ zoomSlider.addEventListener('input', function() {
   zoomLevel = v / 10;
   zoomVal.textContent = zoomLevel.toFixed(1);
 });
+
+var _bounds = (function() {
+  var p = DATA.latent_path, n = p.length, xMin=Infinity, xMax=-Infinity, yMin=Infinity, yMax=-Infinity;
+  for (var pi=0; pi<n; pi++) {
+    if (p[pi][0] < xMin) xMin = p[pi][0];
+    if (p[pi][0] > xMax) xMax = p[pi][0];
+    if (p[pi][1] < yMin) yMin = p[pi][1];
+    if (p[pi][1] > yMax) yMax = p[pi][1];
+  }
+  return {xMin:xMin, xMax:xMax, yMin:yMin, yMax:yMax};
+})();
 
 initAudio();
 

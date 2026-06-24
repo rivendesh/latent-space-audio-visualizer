@@ -42,6 +42,8 @@ let currentVol = 0.75;
 let sourceGen = 0;
 let panMode = 'midpoint';
 let fadeExp = 3.0;
+let loopEnabled = false;
+const loopBtn = document.getElementById(id+'-loop');
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x070714);
@@ -590,15 +592,6 @@ function animate() {
   }
   controls.update();
 
-  const vpW = viewport.clientWidth;
-  const vpH = viewport.clientHeight;
-  if (renderer.domElement.width !== Math.round(vpW * window.devicePixelRatio) ||
-      renderer.domElement.height !== Math.round(vpH * window.devicePixelRatio)) {
-    camera.aspect = vpW / vpH;
-    camera.updateProjectionMatrix();
-    renderer.setSize(vpW, vpH);
-  }
-
   renderer.render(scene, camera);
 
   drawWaveform(t);
@@ -613,16 +606,43 @@ function animate() {
   seekBar.value = total > 0 ? (t/total)*1000 : 0;
 
   if (t >= DATA.duration) {
-    if (isPlaying) {
-      isPlaying = false;
-      playBtn.innerHTML = '&#9654;';
+    if (loopEnabled) {
+      pausedAt = 0;
+      if (isPlaying) {
+        if (source) { source.stop(); source.disconnect(); source = null; }
+        source = createSource();
+        source.start(0, 0);
+        startTime = audioCtx.currentTime;
+      }
+    } else {
+      if (isPlaying) {
+        isPlaying = false;
+        playBtn.innerHTML = '&#9654;';
+      }
+      pausedAt = DATA.duration;
     }
-    pausedAt = DATA.duration;
   }
   animId = requestAnimationFrame(animate);
 }
 
 playBtn.addEventListener('click', togglePlay);
+
+loopBtn.addEventListener('click', function() {
+  loopEnabled = !loopEnabled;
+  loopBtn.style.opacity = loopEnabled ? '1' : '0.4';
+  loopBtn.style.background = loopEnabled ? 'linear-gradient(135deg,#ffd700,#ff8c00)' : 'linear-gradient(135deg,#00d2ff,#3a7bd5)';
+});
+
+document.addEventListener('keydown', function(e) {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  switch (e.code) {
+    case 'Space': e.preventDefault(); togglePlay(); break;
+    case 'ArrowLeft': seek(Math.max(0, pausedAt - 5)); break;
+    case 'ArrowRight': seek(Math.min(DATA.duration, pausedAt + 5)); break;
+    case 'ArrowUp': volSlider.value = Math.min(100, parseInt(volSlider.value) + 5); volSlider.dispatchEvent(new Event('input')); break;
+    case 'ArrowDown': volSlider.value = Math.max(0, parseInt(volSlider.value) - 5); volSlider.dispatchEvent(new Event('input')); break;
+  }
+});
 
 seekBar.addEventListener('input', function() {
   const time = (parseFloat(this.value) / 1000) * DATA.duration;
@@ -721,5 +741,13 @@ document.addEventListener('mozfullscreenchange', onFsChange);
 initAudio();
 animate();
 
-const ro = new ResizeObserver(() => animate());
+function resizeRenderer() {
+  var w = viewport.clientWidth, h = viewport.clientHeight;
+  if (w > 0 && h > 0) {
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+  }
+}
+const ro = new ResizeObserver(resizeRenderer);
 ro.observe(viewport);

@@ -88,10 +88,12 @@ def _build_fft_figure(audio, sr):
     return fig
 
 
-def _build_latent_figure(latent_points):
+def _build_latent_figure(latent_points, latent_times):
     n = len(latent_points)
     t_frac = np.linspace(0, 1, n) if n > 1 else np.array([0])
     colors = [[0, "rgb(0,210,255)"], [0.5, "rgb(123,47,247)"], [1, "rgb(255,107,107)"]]
+
+    customdata = np.column_stack([latent_times, latent_points[:, 0], latent_points[:, 1]])
 
     fig = go.Figure()
 
@@ -117,6 +119,8 @@ def _build_latent_figure(latent_points):
             line=dict(width=0),
         ),
         name="Trajectory",
+        customdata=customdata,
+        hovertemplate="Time: %{customdata[0]:.2f}s<br>PC1: %{customdata[1]:.3f}<br>PC2: %{customdata[2]:.3f}<extra></extra>",
     ))
 
     fig.update_layout(
@@ -147,8 +151,8 @@ def _st_download_html(fig, filename, label):
     )
 
 
-def render_static_analysis_tab(audio, sr, latent_points, file_bytes):
-    latent_fig = _build_latent_figure(latent_points)
+def render_static_analysis_tab(audio, sr, latent_points, latent_times, file_bytes):
+    latent_fig = _build_latent_figure(latent_points, latent_times)
     st.plotly_chart(latent_fig, config=_HIGH_RES_CONFIG, width='stretch')
 
     col_wave, col_fft = st.columns(2)

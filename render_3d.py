@@ -18,8 +18,6 @@ def build_render_3d(audio, sr, latent_points, latent_times, centroids, rms, wave
 
     centroid_min = float(centroids.min())
     centroid_max = float(centroids.max())
-    centroid_mean = float(centroids.mean())
-    centroid_std = float(centroids.std())
     rms_min = float(rms.min())
     rms_max = float(rms.max())
 
@@ -43,8 +41,6 @@ def build_render_3d(audio, sr, latent_points, latent_times, centroids, rms, wave
         "centroid_max": centroid_max,
         "rms_min": rms_min,
         "rms_max": rms_max,
-        "centroid_mean": centroid_mean,
-        "centroid_std": centroid_std,
         "duration": float(len(audio) / sr),
         "audio_b64": audio_b64,
         "sr": sr,
@@ -301,6 +297,7 @@ _TEMPLATE = r"""
 
   <div class="__COMPONENT_ID__-controls">
     <button id="__COMPONENT_ID__-play">&#9654;</button>
+    <button id="__COMPONENT_ID__-loop" style="background:linear-gradient(135deg,var(--accent),#3a7bd5);border:none;color:#000;padding:8px 12px;border-radius:6px;cursor:pointer;font-weight:700;font-size:15px;opacity:0.4;line-height:1;min-width:0">&#8634;</button>
     <input type="range" class="__COMPONENT_ID__-seek" id="__COMPONENT_ID__-seek" min="0" max="1000" value="0">
     <span class="time" id="__COMPONENT_ID__-time">0:00 / 0:00</span>
   </div>
