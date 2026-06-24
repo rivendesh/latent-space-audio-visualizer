@@ -1,351 +1,8 @@
-import base64
-import json
-import uuid
-
-from audio_processor import audio_to_wav_bytes
-
-
-# Serialise audio + latent data into a self-contained HTML string with Three.js.
-# Returns an <iframe>-ready component embedding a 3D latent-space viewer.
-def build_3d_component(audio, sr, latent_points, latent_times, centroids, rms, waveform_peaks):
-    wav_bytes = audio_to_wav_bytes(audio, sr)
-    audio_b64 = base64.b64encode(wav_bytes).decode("ascii")
-
-    centroid_min = float(centroids.min())
-    centroid_max = float(centroids.max())
-    centroid_mean = float(centroids.mean())
-    centroid_std = float(centroids.std())
-    rms_min = float(rms.min())
-    rms_max = float(rms.max())
-
-    time_max = float(latent_times.max()) if len(latent_times) > 0 else 1.0
-    time_norm = (latent_times / time_max).tolist()
-
-    points_3d = []
-    for i in range(len(latent_points)):
-        points_3d.append([
-            float(latent_points[i, 0]),
-            float(latent_points[i, 1]),
-            time_norm[i],
-        ])
-
-    data = {
-        "points_3d": points_3d,
-        "centroids": centroids.tolist(),
-        "rms": rms.tolist(),
-        "times": latent_times.tolist(),
-        "centroid_min": centroid_min,
-        "centroid_max": centroid_max,
-        "rms_min": rms_min,
-        "rms_max": rms_max,
-        "centroid_mean": centroid_mean,
-        "centroid_std": centroid_std,
-        "duration": float(len(audio) / sr),
-        "audio_b64": audio_b64,
-        "sr": sr,
-        "waveform_peaks": waveform_peaks,
-    }
-
-    component_id = f"r3d-{uuid.uuid4().hex[:8]}"
-    data_json = json.dumps(data)
-
-    html = _TEMPLATE.replace("__COMPONENT_ID__", component_id).replace(
-        "__DATA_JSON__", data_json
-    )
-    return html
-
-
-_TEMPLATE = r"""
-<style>
-  #__COMPONENT_ID__-wrap {
-    --bg: #0a0a1a;
-    --bg2: #070714;
-    --text: #e0e0e0;
-    --text-strong: #fff;
-    --text-muted: #888;
-    --text-label: #999;
-    --range-bg: #333;
-    --accent: #00d2ff;
-    font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-    user-select: none;
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    box-sizing: border-box;
-    color: var(--text);
-  }
-  #__COMPONENT_ID__-inner {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    min-height: 0;
-  }
-  #__COMPONENT_ID__-viewport:fullscreen {
-    width: 100vw;
-    height: 100vh;
-    background: var(--bg2);
-  }
-  #__COMPONENT_ID__-viewport:fullscreen canvas {
-    width: 100vw !important;
-    height: 100vh !important;
-  }
-  #__COMPONENT_ID__-viewport {
-    position: relative;
-    border-radius: 6px;
-    overflow: hidden;
-    flex: 1;
-    min-height: 300px;
-    background: var(--bg2);
-  }
-  #__COMPONENT_ID__-viewport canvas {
-    display: block;
-    width: 100% !important;
-    height: 100% !important;
-  }
-  #__COMPONENT_ID__-fs-btn {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    z-index: 20;
-    background: rgba(0,0,0,0.35);
-    border: 1px solid rgba(255,255,255,0.15);
-    color: rgba(255,255,255,0.6);
-    border-radius: 4px;
-    padding: 4px 8px;
-    cursor: pointer;
-    font-size: 14px;
-    line-height: 1;
-    font-family: sans-serif;
-    transition: opacity 0.2s;
-  }
-  #__COMPONENT_ID__-fs-btn:hover {
-    background: rgba(0,0,0,0.55);
-    color: #fff;
-  }
-  .__COMPONENT_ID__-controls {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-top: 10px;
-    flex-wrap: wrap;
-  }
-  .__COMPONENT_ID__-controls button {
-    background: linear-gradient(135deg,var(--accent),#3a7bd5);
-    border: none;
-    color: #000;
-    padding: 8px 20px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: 700;
-    font-size: 15px;
-    min-width: 84px;
-  }
-  .__COMPONENT_ID__-controls input[type=range] {
-    height: 4px;
-    -webkit-appearance: none;
-    appearance: none;
-    background: var(--range-bg);
-    border-radius: 2px;
-    outline: none;
-    cursor: pointer;
-    margin: 0;
-  }
-  .__COMPONENT_ID__-controls input[type=range]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 12px; height: 12px;
-    border-radius: 50%;
-    background: var(--accent);
-    cursor: pointer;
-  }
-  .__COMPONENT_ID__-controls label {
-    font-size: 12px;
-    color: var(--text-label);
-    white-space: nowrap;
-  }
-  .__COMPONENT_ID__-controls .val {
-    font-size: 12px;
-    color: var(--text-muted);
-    font-family: 'SF Mono',Monaco,monospace;
-    min-width: 32px;
-  }
-  .__COMPONENT_ID__-controls .time {
-    font-family: 'SF Mono',Monaco,monospace;
-    font-size: 13px;
-    color: var(--text-muted);
-    margin-left: auto;
-  }
-  .__COMPONENT_ID__-seek {
-    flex: 1;
-    min-width: 80px;
-  }
-  .__COMPONENT_ID__-slider-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: 6px;
-    flex-wrap: wrap;
-  }
-  .__COMPONENT_ID__-slider-row input[type=range] {
-    height: 4px;
-    -webkit-appearance: none;
-    appearance: none;
-    background: var(--range-bg);
-    border-radius: 2px;
-    outline: none;
-    cursor: pointer;
-    margin: 0;
-  }
-  .__COMPONENT_ID__-slider-row input[type=range]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 12px; height: 12px;
-    border-radius: 50%;
-    background: var(--accent);
-    cursor: pointer;
-  }
-  .__COMPONENT_ID__-slider-row label {
-    font-size: 11px;
-    color: var(--text-label);
-    white-space: nowrap;
-  }
-  .__COMPONENT_ID__-slider-row .val {
-    font-size: 11px;
-    color: var(--text-muted);
-    font-family: 'SF Mono',Monaco,monospace;
-    min-width: 28px;
-  }
-  #__COMPONENT_ID__-bottom {
-    display: flex;
-    gap: 10px;
-    margin-top: 8px;
-    flex-shrink: 0;
-    height: 280px;
-  }
-  .__COMPONENT_ID__-bottom-item {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-  }
-  .__COMPONENT_ID__-bottom-label {
-    font-size: 11px;
-    color: var(--text-muted);
-    margin-bottom: 4px;
-    flex-shrink: 0;
-  }
-  .__COMPONENT_ID__-bottom-canvas {
-    flex: 1;
-    position: relative;
-    border-radius: 4px;
-    overflow: hidden;
-    background: var(--bg2);
-    min-height: 0;
-  }
-  .__COMPONENT_ID__-bottom-canvas canvas {
-    display: block;
-    width: 100% !important;
-    height: 100% !important;
-  }
-  .__COMPONENT_ID__-legend {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    margin-bottom: 2px;
-    flex-shrink: 0;
-  }
-  .__COMPONENT_ID__-legend-label {
-    font-size: 9px;
-    color: var(--text-muted);
-    font-family: 'SF Mono', Monaco, monospace;
-    white-space: nowrap;
-  }
-  #__COMPONENT_ID__-legend-bar {
-    border-radius: 3px;
-    border: 1px solid rgba(255,255,255,0.08);
-    flex-shrink: 0;
-  }
-</style>
-
-<div id="__COMPONENT_ID__-wrap">
-  <div id="__COMPONENT_ID__-inner">
-  <div id="__COMPONENT_ID__-viewport">
-    <canvas id="__COMPONENT_ID__-three"></canvas>
-    <button id="__COMPONENT_ID__-fs-btn">⛶</button>
-  </div>
-
-  <div id="__COMPONENT_ID__-bottom">
-    <div class="__COMPONENT_ID__-bottom-item">
-      <div class="__COMPONENT_ID__-bottom-label">Waveform</div>
-      <div class="__COMPONENT_ID__-bottom-canvas">
-        <canvas id="__COMPONENT_ID__-wave"></canvas>
-      </div>
-    </div>
-    <div class="__COMPONENT_ID__-bottom-item">
-      <div class="__COMPONENT_ID__-bottom-label">Spectral Centroid</div>
-      <div class="__COMPONENT_ID__-legend">
-        <span class="__COMPONENT_ID__-legend-label" id="__COMPONENT_ID__-legend-low">0 kHz</span>
-        <canvas id="__COMPONENT_ID__-legend-bar" width="100" height="8"></canvas>
-        <span class="__COMPONENT_ID__-legend-label" id="__COMPONENT_ID__-legend-high">10 kHz</span>
-      </div>
-      <div class="__COMPONENT_ID__-bottom-canvas">
-        <canvas id="__COMPONENT_ID__-prof"></canvas>
-      </div>
-    </div>
-  </div>
-
-  <div class="__COMPONENT_ID__-controls">
-    <button id="__COMPONENT_ID__-play">&#9654;</button>
-    <input type="range" class="__COMPONENT_ID__-seek" id="__COMPONENT_ID__-seek" min="0" max="1000" value="0">
-    <span class="time" id="__COMPONENT_ID__-time">0:00 / 0:00</span>
-  </div>
-  <div class="__COMPONENT_ID__-slider-row">
-    <label>Vol</label>
-    <input type="range" id="__COMPONENT_ID__-vol" min="0" max="100" value="75" style="width:56px">
-    <span class="val" id="__COMPONENT_ID__-vol-val">75%</span>
-    <label>Spd</label>
-    <input type="range" id="__COMPONENT_ID__-speed" min="0.25" max="3" step="0.25" value="1" style="width:56px">
-    <span class="val" id="__COMPONENT_ID__-speed-val">1x</span>
-    <label>Orbit</label>
-    <input type="range" id="__COMPONENT_ID__-orbit" min="-0.4" max="0.4" step="0.05" value="0.1" style="width:56px">
-    <span class="val" id="__COMPONENT_ID__-orbit-val">0.10</span>
-    <label>Stretch</label>
-    <input type="range" id="__COMPONENT_ID__-stretch" min="0.5" max="6" step="0.1" value="3.5" style="width:56px">
-    <span class="val" id="__COMPONENT_ID__-stretch-val">3.5</span>
-    <label>Slc</label>
-    <input type="range" id="__COMPONENT_ID__-slices" min="0" max="10" value="5" style="width:56px">
-    <span class="val" id="__COMPONENT_ID__-slices-val">5</span>
-    <label>Op</label>
-    <input type="range" id="__COMPONENT_ID__-slice-op" min="0" max="100" value="5" style="width:56px">
-    <span class="val" id="__COMPONENT_ID__-slice-op-val">5</span>
-    <label>Zoom</label>
-    <input type="range" id="__COMPONENT_ID__-zoom" min="5" max="50" value="15" style="width:56px">
-    <span class="val" id="__COMPONENT_ID__-zoom-val">1.5</span>
-    <label>Fade</label>
-    <input type="range" id="__COMPONENT_ID__-fade" min="5" max="100" step="5" value="30" style="width:56px">
-    <span class="val" id="__COMPONENT_ID__-fade-val">3.0</span>
-    <label>Pan</label>
-    <select id="__COMPONENT_ID__-pan-mode" style="background:var(--bg2);color:var(--text);border:1px solid var(--text-muted);border-radius:4px;font-size:11px;padding:2px 4px;width:66px;">
-      <option value="midpoint">Midpoint</option>
-      <option value="none">None</option>
-    </select>
-  </div>
-  </div>
-</div>
-
-<script type="importmap">
-{
-  "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
-  }
-}
-</script>
-
-<script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const DATA = __DATA_JSON__;
-const id = '__COMPONENT_ID__';
+const DATA = window.DATA;
+const id = window.__ID__;
 
 const viewport = document.getElementById(id+'-viewport');
 const threeCanvas = document.getElementById(id+'-three');
@@ -372,7 +29,6 @@ const legendBar = document.getElementById(id+'-legend-bar');
 const legendLow = document.getElementById(id+'-legend-low');
 const legendHigh = document.getElementById(id+'-legend-high');
 
-// ----- audio state -----
 let audioCtx = null;
 let audioBuffer = null;
 let source = null;
@@ -387,7 +43,6 @@ let sourceGen = 0;
 let panMode = 'midpoint';
 let fadeExp = 3.0;
 
-// ----- Three.js -----
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x070714);
 
@@ -411,19 +66,16 @@ controls.autoRotateSpeed = 0.1;
 controls.target.set(0, 0, 0);
 controls.update();
 
-// Data group for time-axis stretching
 const dataGroup = new THREE.Group();
 scene.add(dataGroup);
 dataGroup.scale.z = 3.5;
 
-// ----- lighting -----
 const ambLight = new THREE.AmbientLight(0x404060, 0.6);
 scene.add(ambLight);
 const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
 dirLight.position.set(1, 2, 1);
 scene.add(dirLight);
 
-// ----- sharp dot texture for points -----
 function makeDotTexture() {
   const c = document.createElement('canvas');
   c.width = 16;
@@ -439,7 +91,6 @@ function makeDotTexture() {
 }
 const dotTexture = makeDotTexture();
 
-// ----- spectral-centroid color map: cyan -> purple -> red-orange -----
 var C_START = [0, 210, 255];
 var C_MID = [123, 47, 247];
 var C_END = [255, 107, 107];
@@ -457,7 +108,6 @@ const centroids = DATA.centroids;
 const n = points3d.length;
 var n1 = Math.max(1, n - 1);
 
-// Prefix sums for O(1) running midpoint of drawn segment
 const prefX = new Array(n);
 const prefY = new Array(n);
 const prefZ = new Array(n);
@@ -471,7 +121,6 @@ for (let i = 0; i < n; i++) {
   prefZ[i] = sz;
 }
 
-// Pre-fill geometry arrays
 const posArr = new Float32Array(n * 3);
 const colArr = new Float32Array(n * 3);
 const sizeArr = new Float32Array(n);
@@ -491,7 +140,6 @@ for (let i = 0; i < n; i++) {
   colArr[i*3+2] = b / 255;
 }
 
-// Points with per-vertex size and alpha via ShaderMaterial
 const pointGeo = new THREE.BufferGeometry();
 pointGeo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
 pointGeo.setAttribute('customColor', new THREE.BufferAttribute(colArr, 3));
@@ -533,7 +181,6 @@ const pointMat = new THREE.ShaderMaterial({
 const points = new THREE.Points(pointGeo, pointMat);
 dataGroup.add(points);
 
-// Trajectory line
 const linePos = new Float32Array(n * 3);
 for (let i = 0; i < n; i++) {
   linePos[i*3] = points3d[i][0];
@@ -552,7 +199,6 @@ const lineMat = new THREE.LineBasicMaterial({
 const line = new THREE.Line(lineGeo, lineMat);
 dataGroup.add(line);
 
-// ----- axes -----
 function makeLabelSprite(text) {
   const c = document.createElement('canvas');
   c.width = 128;
@@ -591,14 +237,12 @@ addAxis([-axExt, 0, 0], [axExt, 0, 0], 0x00d2ff, 'PC1');
 addAxis([0, -axExt, 0], [0, axExt, 0], 0x00d2ff, 'PC2');
 addAxis([0, 0, -0.1], [0, 0, 1.1], 0x00d2ff, 'Time');
 
-// grid helper
 const gridHelper = new THREE.GridHelper(8, 16, 0x6666aa, 0x444477);
 gridHelper.position.y = -axExt;
 gridHelper.material.transparent = true;
 gridHelper.material.opacity = 0.55;
 scene.add(gridHelper);
 
-// Side grid (PC2-Time plane at x=-axExt)
 const gridSide = new THREE.GridHelper(8, 16, 0x6666aa, 0x444477);
 gridSide.position.x = -axExt;
 gridSide.rotation.z = Math.PI / 2;
@@ -606,7 +250,6 @@ gridSide.material.transparent = true;
 gridSide.material.opacity = 0.3;
 scene.add(gridSide);
 
-// Back grid (PC1-PC2 plane at z=0)
 const gridBack = new THREE.GridHelper(8, 16, 0x6666aa, 0x444477);
 gridBack.position.z = 0;
 gridBack.rotation.x = Math.PI / 2;
@@ -614,7 +257,6 @@ gridBack.material.transparent = true;
 gridBack.material.opacity = 0.3;
 scene.add(gridBack);
 
-// Time slice planes — vertical XY planes at regular z intervals
 const timePlaneGroup = new THREE.Group();
 dataGroup.add(timePlaneGroup);
 const timePlaneMat = new THREE.MeshBasicMaterial({
@@ -629,7 +271,7 @@ const timePlaneEdgeMat = new THREE.LineBasicMaterial({
   transparent: true,
   opacity: 0.12,
 });
-// ----- build time slice planes -----
+
 function buildTimePlanes(n) {
   while (timePlaneGroup.children.length) {
     const c = timePlaneGroup.children[0];
@@ -651,7 +293,6 @@ function buildTimePlanes(n) {
 }
 buildTimePlanes(5);
 
-// ----- centroid color legend (draw to profile legend bar) -----
 function buildLegend() {
   const ctx = legendBar.getContext('2d');
   for (var i = 0; i < legendBar.width; i++) {
@@ -665,7 +306,6 @@ function buildLegend() {
 }
 buildLegend();
 
-// ----- waveform drawing -----
 function drawWaveform(t) {
   var ctx = waveCanvas.getContext('2d');
   var dpr = window.devicePixelRatio || 1;
@@ -681,14 +321,12 @@ function drawWaveform(t) {
   var n = peaks.length;
   var dur = DATA.duration;
 
-  // grid
   ctx.strokeStyle = 'rgba(255,255,255,0.04)';
   ctx.lineWidth = 1;
   for (var y = 0.5; y < h; y += h/4) {
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
   }
 
-  // time marks
   ctx.font = '9px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
@@ -700,11 +338,9 @@ function drawWaveform(t) {
     ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
   }
 
-  // baseline
   ctx.strokeStyle = 'rgba(255,255,255,0.08)';
   ctx.beginPath(); ctx.moveTo(0, h*0.5); ctx.lineTo(w, h*0.5); ctx.stroke();
 
-  // unplayed fill (full waveform)
   ctx.beginPath();
   ctx.moveTo(0, h*0.5);
   for (var i=0; i<n; i++) {
@@ -717,7 +353,6 @@ function drawWaveform(t) {
   ctx.fillStyle = 'rgba(0,210,255,0.1)';
   ctx.fill();
 
-  // played overlay (clipped to cursor)
   if (t >= 0) {
     var cursorFrac = Math.min(Math.max(t / dur, 0), 1);
     var cursorX = cursorFrac * w;
@@ -740,7 +375,6 @@ function drawWaveform(t) {
     ctx.fill();
     ctx.restore();
 
-    // cursor line
     if (cursorFrac > 0 && cursorFrac < 1) {
       ctx.beginPath();
       ctx.moveTo(cursorX, 0);
@@ -755,7 +389,6 @@ function drawWaveform(t) {
   }
 }
 
-// ----- spectral centroid profile drawing -----
 function drawProfile(t) {
   var ctx = profCanvas.getContext('2d');
   var dpr = window.devicePixelRatio || 1;
@@ -782,7 +415,6 @@ function drawProfile(t) {
   var gridCol = 'rgba(255,255,255,0.05)';
   var textCol = 'rgba(255,255,255,0.3)';
 
-  // grid lines
   ctx.strokeStyle = gridCol;
   ctx.lineWidth = 1;
   for (var i = 0; i <= 4; i++) {
@@ -792,7 +424,6 @@ function drawProfile(t) {
     ctx.beginPath(); ctx.moveTo(pad, gy); ctx.lineTo(pad+plotW, gy); ctx.stroke();
   }
 
-  // axis labels
   ctx.fillStyle = textCol;
   ctx.font = '9px sans-serif';
   ctx.textAlign = 'center';
@@ -808,7 +439,6 @@ function drawProfile(t) {
 
   var n = DATA.centroids.length;
 
-  // all data points, coloured by spectral centroid
   var cMin = DATA.centroid_min, cMax = DATA.centroid_max, cRange = cMax - cMin || 1;
   for (var i = 0; i < n; i++) {
     var cx = toX(DATA.centroids[i]);
@@ -820,7 +450,6 @@ function drawProfile(t) {
     ctx.fill();
   }
 
-  // highlight current playback frame
   if (t >= 0) {
     var progress = Math.min(Math.max(t / DATA.duration, 0), 1);
     var drawIdx = Math.min(Math.floor(progress * n), n);
@@ -843,7 +472,6 @@ function drawProfile(t) {
   }
 }
 
-// ----- audio -----
 function base64ToArrayBuffer(b64) {
   const bin = atob(b64);
   const buf = new ArrayBuffer(bin.length);
@@ -929,17 +557,14 @@ function seek(time) {
   }
 }
 
-// ----- animation -----
 function animate() {
   const t = isPlaying ? Math.min(getCurrentTime(), DATA.duration) : pausedAt;
 
   const progress = Math.min(Math.max(t / DATA.duration, 0), 1);
   const drawCount = Math.min(Math.floor(progress * n), n);
 
-  // Update point draw range
   pointGeo.setDrawRange(0, drawCount);
 
-  // Per-point recency scaling (matches 2D Player: fadeExp-controlled falloff)
   for (var i = 0; i < drawCount; i++) {
     var recency = Math.pow((i + 1) / (drawCount || 1), fadeExp);
     sizeArr[i] = 0.06 + 0.4 * recency;
@@ -952,10 +577,8 @@ function animate() {
   pointGeo.attributes.pointSize.needsUpdate = true;
   pointGeo.attributes.pointAlpha.needsUpdate = true;
 
-  // Update trajectory line
   lineGeo.setDrawRange(0, Math.max(0, drawCount - 1));
 
-  // Track the pan target — running midpoint or none (fixed).
   if (drawCount > 0 && panMode === 'midpoint') {
     var tx = prefX[drawCount - 1] / drawCount;
     var ty = prefY[drawCount - 1] / drawCount;
@@ -967,7 +590,6 @@ function animate() {
   }
   controls.update();
 
-  // Resize if needed
   const vpW = viewport.clientWidth;
   const vpH = viewport.clientHeight;
   if (renderer.domElement.width !== Math.round(vpW * window.devicePixelRatio) ||
@@ -979,11 +601,9 @@ function animate() {
 
   renderer.render(scene, camera);
 
-  // Draw waveform and profile
   drawWaveform(t);
   drawProfile(t);
 
-  // UI
   const total = DATA.duration;
   const mins = Math.floor(t/60);
   const secs = Math.floor(t%60);
@@ -992,7 +612,6 @@ function animate() {
   timeDisplay.textContent = mins + ':' + secs.toString().padStart(2,'0') + ' / ' + tMins + ':' + tSecs.toString().padStart(2,'0');
   seekBar.value = total > 0 ? (t/total)*1000 : 0;
 
-  // End-of-track state cleanup (animation loop keeps running for interaction)
   if (t >= DATA.duration) {
     if (isPlaying) {
       isPlaying = false;
@@ -1003,7 +622,6 @@ function animate() {
   animId = requestAnimationFrame(animate);
 }
 
-// ----- events -----
 playBtn.addEventListener('click', togglePlay);
 
 seekBar.addEventListener('input', function() {
@@ -1074,7 +692,6 @@ fadeSlider.addEventListener('input', function() {
   fadeVal.textContent = fadeExp.toFixed(1);
 });
 
-// ----- fullscreen toggle (viewport only — no controls/panels) -----
 const fsBtn = document.getElementById(id+'-fs-btn');
 fsBtn.addEventListener('click', function() {
   if (!document.fullscreenElement) {
@@ -1101,14 +718,8 @@ document.addEventListener('fullscreenchange', onFsChange);
 document.addEventListener('webkitfullscreenchange', onFsChange);
 document.addEventListener('mozfullscreenchange', onFsChange);
 
-// ----- init -----
 initAudio();
 animate();
 
-// ResizeObserver for sidebar and container size changes
 const ro = new ResizeObserver(() => animate());
 ro.observe(viewport);
-</script>
-"""
-
-
