@@ -44,7 +44,7 @@ _TEMPLATE = r"""<!DOCTYPE html>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { background: #0e1117; font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; color: #e0e0e0; user-select: none; }
   #__ID__-wrap { padding: 20px; }
-  #__ID__-p5-container canvas { display: block; width: 100% !important; height: auto !important; border-radius: 6px; }
+  #__ID__-p5-container canvas { display: block; border-radius: 6px; }
   #__ID__-controls { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
   #__ID__-controls button {
     background: linear-gradient(135deg,#00d2ff,#3a7bd5); border: none; color: #000;

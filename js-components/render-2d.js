@@ -59,10 +59,15 @@ function createSource() {
   return s;
 }
 
+function getCanvasWidth() {
+  var el = document.getElementById(ID + '-p5-container');
+  return el ? Math.max(el.clientWidth, 200) : Math.max(windowWidth, 200);
+}
+
 function setup() {
   var container = document.getElementById(ID + '-p5-container');
-  var w = container ? container.clientWidth : windowWidth;
-  createCanvas(w, TOTAL_H);
+  var canvas = createCanvas(getCanvasWidth(), TOTAL_H);
+  if (container) canvas.parent(container);
   pixelDensity(1);
 
   var p = DATA.latent_path;
@@ -121,7 +126,9 @@ function draw() {
   background(10, 10, 26);
 
   push();
-  clip(0, 0, width, LATENT_H);
+  noFill();
+  rect(0, 0, width, LATENT_H);
+  clip();
   drawLatent(t);
   noClip();
   pop();
@@ -132,7 +139,9 @@ function draw() {
 
   push();
   translate(0, LATENT_H);
-  clip(0, 0, width, WAVE_H);
+  noFill();
+  rect(0, 0, width, WAVE_H);
+  clip();
   drawWaveform(t);
   noClip();
   pop();
@@ -350,20 +359,22 @@ function drawWaveform(curTime) {
 
   var cursorFrac = dur > 0 ? Math.min(curTime / dur, 1) : 0;
   if (cursorFrac > 0.01) {
+    push();
+    noFill();
+    rect(0, 0, cursorFrac * w, h);
+    clip();
     fill(0, 210, 255, 64);
     beginShape();
     vertex(0, h * 0.5);
     for (var i = 0; i < n; i++) {
-      var cx = (i / n) * w;
-      if (cx > cursorFrac * w) break;
-      vertex(cx, h * 0.5 + peaks[i][0] * h * 0.42);
+      vertex((i / n) * w, h * 0.5 + peaks[i][0] * h * 0.42);
     }
     for (var i = n - 1; i >= 0; i--) {
-      var cx = (i / n) * w;
-      if (cx > cursorFrac * w) break;
-      vertex(cx, h * 0.5 + peaks[i][1] * h * 0.42);
+      vertex((i / n) * w, h * 0.5 + peaks[i][1] * h * 0.42);
     }
     endShape(CLOSE);
+    noClip();
+    pop();
   }
 
   if (cursorFrac > 0 && cursorFrac < 1) {
@@ -472,7 +483,5 @@ function onKey(e) {
 }
 
 function windowResized() {
-  var container = document.getElementById(ID + '-p5-container');
-  var w = container ? container.clientWidth : windowWidth;
-  resizeCanvas(w, TOTAL_H);
+  resizeCanvas(getCanvasWidth(), TOTAL_H);
 }
