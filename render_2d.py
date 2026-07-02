@@ -7,7 +7,6 @@ import numpy as np
 from utils.audio_utils import audio_to_wav_bytes
 
 _JS_DIR = Path(__file__).parent / "js-components"
-_SKETCH_JS = (_JS_DIR / "render-2d.js").read_text()
 
 CANVAS_W = 960
 LATENT_H = 325
@@ -39,6 +38,7 @@ def _path_color(t):
 
 
 def build_render_2d(audio, sr, latent_points, latent_times, centroids, rms, waveform_peaks):
+    sketch_js = (_JS_DIR / "render-2d.js").read_text()
     wav_bytes = audio_to_wav_bytes(audio, sr)
     n_frames = len(latent_points)
 
@@ -101,6 +101,7 @@ def build_render_2d(audio, sr, latent_points, latent_times, centroids, rms, wave
         "ch": int(TOTAL_H),
         "lh": int(LATENT_H),
         "wh": int(WAVE_H),
+        "ct_h": int(CENT_H),
         "dur": round(len(audio) / sr, 3),
         "sr": int(sr),
         "ab": base64.b64encode(wav_bytes).decode("ascii"),
@@ -135,7 +136,6 @@ body{{background:#0e1117;font-family:system-ui,sans-serif;color:#e0e0e0;user-sel
 <body>
 <div id="w"><div id="c"></div><div id="b"><button id="p">&#9654;</button><input type="range" id="s" min="0" max="1000" value="0"><span id="t">0:00 / 0:00</span><label>Vol</label><input type="range" id="v" min="0" max="100" value="75"><span id="vv">75%</span></div></div>
 <script>var D={payload_js};
-var P=document.getElementById("p"),S=document.getElementById("s"),T=document.getElementById("t"),V=document.getElementById("v"),VV=document.getElementById("vv");
-{_SKETCH_JS}</script>
+{sketch_js}</script>
 </body>
 </html>"""
