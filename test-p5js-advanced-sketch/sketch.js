@@ -1,203 +1,134 @@
-const sketch = (p) => {
-  let particles = [];
-  let attractors = [];
-  let starField = [];
-  let flowField = [];
+let particles = [];
+let attractors = [];
 
-  const PARTICLE_COUNT = 300;
-  const STAR_COUNT = 200;
-  const MAX_SPEED = 4;
+const PARTICLE_COUNT = 300;
+const MAX_SPEED = 4;
 
-  p.setup = () => {
-    p.createCanvas(800, 600);
+function setup() {
+  createCanvas(800, 600);
+  colorMode(HSB, 360, 100, 100, 100);
 
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      particles.push(new Particle(p));
-    }
-
-    for (let i = 0; i < STAR_COUNT; i++) {
-      starField.push({
-        x: p.random(p.width),
-        y: p.random(p.height),
-        size: p.random(0.5, 2.5),
-        twinkleSpeed: p.random(0.01, 0.05),
-        phase: p.random(p.TWO_PI),
-      });
-    }
-
-    const cols = p.floor(p.width / 20);
-    const rows = p.floor(p.height / 20);
-    for (let i = 0; i < cols * rows; i++) {
-      flowField.push(p.random(p.TWO_PI));
-    }
-  };
-
-  p.draw = () => {
-    p.background(10, 8, 20, 40);
-
-    drawStars(p);
-    updateAndDrawParticles(p);
-    drawAttractors(p);
-    drawInfo(p);
-  };
-
-  p.mouseClicked = () => {
-    if (p.mouseButton === p.LEFT) {
-      attractors.push({
-        x: p.mouseX,
-        y: p.mouseY,
-        strength: 100,
-        life: 255,
-        type: 'attract',
-      });
-    } else if (p.mouseButton === p.RIGHT) {
-      attractors.push({
-        x: p.mouseX,
-        y: p.mouseY,
-        strength: -150,
-        life: 255,
-        type: 'repel',
-      });
-    }
-  };
-
-  p.mousePressed = () => {
-    if (p.mouseButton === p.CENTER) {
-      attractors = [];
-    }
-  };
-
-  function drawStars(p) {
-    for (const star of starField) {
-      const alpha = 128 + 127 * p.sin(p.frameCount * star.twinkleSpeed + star.phase);
-      p.fill(255, alpha);
-      p.noStroke();
-      p.circle(star.x, star.y, star.size);
-    }
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    particles.push(new Particle());
   }
+}
 
-  function drawAttractors(p) {
-    for (let i = attractors.length - 1; i >= 0; i--) {
-      const a = attractors[i];
-      a.life -= 2;
-      if (a.life <= 0) {
-        attractors.splice(i, 1);
-        continue;
+function draw() {
+  background(0, 0, 8, 2);
+
+  updateParticles();
+  drawParticles();
+  drawAttractors();
+  drawInfo();
+}
+
+function mouseClicked() {
+  if (mouseButton === LEFT) {
+    attractors.push(createVector(mouseX, mouseY, 1));  // z=1 for attract
+  } else if (mouseButton === RIGHT) {
+    attractors.push(createVector(mouseX, mouseY, -1)); // z=-1 for repel
+  }
+}
+
+function keyPressed() {
+  if (key === 'c' || key === 'C') attractors = [];
+}
+
+function drawAttractors() {
+  for (let i = attractors.length - 1; i >= 0; i--) {
+    const a = attractors[i];
+    const age = frameCount - (a._birth || (a._birth = frameCount));
+    if (age > 120) { attractors.splice(i, 1); continue; }
+
+    const alpha = map(age, 0, 120, 80, 0);
+    const hue = a.z === 1 ? 200 : 0;
+    fill(hue, 80, 90, alpha);
+    noStroke();
+    const r = map(age, 0, 120, 25, 5);
+    circle(a.x, a.y, r * 2);
+  }
+}
+
+function updateParticles() {
+  for (const p of particles) {
+    applyAttractors(p);
+    p.vel.limit(MAX_SPEED);
+    p.pos.add(p.vel);
+    p.vel.mult(0.98);
+
+    if (p.pos.x < 0) p.pos.x = width;
+    if (p.pos.x > width) p.pos.x = 0;
+    if (p.pos.y < 0) p.pos.y = height;
+    if (p.pos.y > height) p.pos.y = 0;
+
+    p.trail.push(p.pos.copy());
+    if (p.trail.length > 12) p.trail.shift();
+  }
+}
+
+function applyAttractors(pt) {
+  for (const a of attractors) {
+    const dx = a.x - pt.pos.x;
+    const dy = a.y - pt.pos.y;
+    const d = sqrt(dx * dx + dy * dy);
+    if (d < 1) continue;
+    const strength = a.z * 80;
+    pt.vel.x += (dx / d) * strength / d;
+    pt.vel.y += (dy / d) * strength / d;
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    drawNeighbors(p);
+
+    if (p.trail.length > 1) {
+      noFill();
+      for (let i = 1; i < p.trail.length; i++) {
+        const alpha = map(i, 0, p.trail.length, 0, 40);
+        stroke(p.hue, 70, 90, alpha);
+        strokeWeight(p.size * 0.4);
+        line(p.trail[i - 1].x, p.trail[i - 1].y, p.trail[i].x, p.trail[i].y);
       }
-      const alpha = p.map(a.life, 255, 0, 80, 0);
-      const r = a.type === 'attract' ? p.color(100, 200, 255, alpha) : p.color(255, 100, 100, alpha);
-      p.fill(r);
-      p.noStroke();
-      const radius = p.map(a.life, 255, 0, 30, 5);
-      p.circle(a.x, a.y, radius * 2);
+    }
+
+    fill(p.hue, 80, 95, 80);
+    noStroke();
+    circle(p.pos.x, p.pos.y, p.size);
+  }
+}
+
+function drawNeighbors(p) {
+  for (const other of particles) {
+    if (other === p) continue;
+    const d = dist(p.pos.x, p.pos.y, other.pos.x, other.pos.y);
+    if (d < 60) {
+      const alpha = map(d, 0, 60, 60, 0);
+      stroke(260, 50, 90, alpha);
+      strokeWeight(0.5);
+      line(p.pos.x, p.pos.y, other.pos.x, other.pos.y);
     }
   }
+}
 
-  function updateAndDrawParticles(p) {
-    for (const pt of particles) {
-      applyAttractors(p, pt);
-      applyFlowField(p, pt);
-
-      const neighbors = findNeighbors(pt, particles, 60);
-      for (const n of neighbors) {
-        const alpha = p.map(p.dist(pt.pos.x, pt.pos.y, n.pos.x, n.pos.y), 0, 60, 100, 0);
-        p.stroke(180, 140, 255, alpha);
-        p.strokeWeight(0.5);
-        p.line(pt.pos.x, pt.pos.y, n.pos.x, n.pos.y);
-      }
-
-      pt.update();
-      pt.show(p);
-    }
-  }
-
-  function applyAttractors(p, pt) {
-    for (const a of attractors) {
-      const dx = a.x - pt.pos.x;
-      const dy = a.y - pt.pos.y;
-      const dist = p.sqrt(dx * dx + dy * dy);
-      if (dist < 1) continue;
-      const force = (a.strength / (dist * dist)) * 0.5;
-      pt.vel.x += (dx / dist) * force;
-      pt.vel.y += (dy / dist) * force;
-    }
-  }
-
-  function applyFlowField(p, pt) {
-    const col = p.floor(pt.pos.x / 20);
-    const row = p.floor(pt.pos.y / 20);
-    const cols = p.floor(p.width / 20);
-    const idx = p.constrain(col + row * cols, 0, flowField.length - 1);
-    const angle = flowField[idx] + p.sin(p.frameCount * 0.005 + idx) * 0.3;
-    pt.vel.x += p.cos(angle) * 0.1;
-    pt.vel.y += p.sin(angle) * 0.1;
-  }
-
-  function findNeighbors(pt, all, radius) {
-    const result = [];
-    for (const other of all) {
-      if (other === pt) continue;
-      const d = p.dist(pt.pos.x, pt.pos.y, other.pos.x, other.pos.y);
-      if (d < radius) result.push(other);
-    }
-    return result;
-  }
-
-  function drawInfo(p) {
-    p.fill(255, 180);
-    p.noStroke();
-    p.textAlign(p.LEFT, p.TOP);
-    p.textSize(13);
-    p.text(`Particles: ${PARTICLE_COUNT}`, 12, 12);
-    p.text(`Attractors: ${attractors.length}`, 12, 30);
-    p.text("Left-click: attract  |  Right-click: repel  |  Middle-click: clear", 12, 52);
-    p.textSize(11);
-    p.text("p5.js advanced sketch embedded in Streamlit", 12, p.height - 16);
-  }
-};
+function drawInfo() {
+  fill(0, 0, 100, 80);
+  noStroke();
+  textAlign(LEFT, TOP);
+  textSize(13);
+  text("particles: " + PARTICLE_COUNT, 12, 12);
+  text("attractors: " + attractors.length, 12, 30);
+  textSize(11);
+  text("[left-click] attract  [right-click] repel  [c] clear", 12, 52);
+  text("p5.js advanced sketch embedded in Streamlit", 12, height - 16);
+}
 
 class Particle {
-  constructor(p) {
-    this.pos = p.createVector(p.random(p.width), p.random(p.height));
-    this.vel = p.createVector(p.random(-1, 1), p.random(-1, 1));
-    this.acc = p.createVector(0, 0);
-    this.size = p.random(2, 5);
-    this.hue = p.random(360);
+  constructor() {
+    this.pos = createVector(random(width), random(height));
+    this.vel = createVector(random(-1, 1), random(-1, 1));
+    this.size = random(2, 5);
+    this.hue = random(360);
     this.trail = [];
-  }
-
-  update() {
-    this.vel.add(this.acc);
-    this.vel.limit(MAX_SPEED);
-    this.pos.add(this.vel);
-    this.acc.mult(0);
-
-    this.trail.push({ x: this.pos.x, y: this.pos.y });
-    if (this.trail.length > 8) this.trail.shift();
-
-    if (this.pos.x < 0) this.pos.x = 800;
-    if (this.pos.x > 800) this.pos.x = 0;
-    if (this.pos.y < 0) this.pos.y = 600;
-    if (this.pos.y > 600) this.pos.y = 0;
-
-    this.hue = (this.hue + 0.3) % 360;
-  }
-
-  show(p) {
-    if (this.trail.length > 1) {
-      p.noFill();
-      for (let i = 1; i < this.trail.length; i++) {
-        const alpha = p.map(i, 0, this.trail.length, 0, 60);
-        p.stroke(this.hue, 180, 220, alpha);
-        p.strokeWeight(this.size * 0.5);
-        p.line(this.trail[i - 1].x, this.trail[i - 1].y, this.trail[i].x, this.trail[i].y);
-      }
-    }
-
-    p.colorMode(p.HSB);
-    p.fill(this.hue, 200, 255, 200);
-    p.noStroke();
-    p.circle(this.pos.x, this.pos.y, this.size);
-    p.colorMode(p.RGB);
   }
 }

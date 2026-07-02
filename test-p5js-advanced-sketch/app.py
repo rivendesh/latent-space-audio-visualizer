@@ -7,14 +7,14 @@ st.title("Advanced p5.js Particle System")
 
 st.markdown(
     "A more complex p5.js sketch embedded in Streamlit. "
-    "Features a particle system with flow fields, neighbor connections, "
+    "Features a particle system with neighbor connections "
     "and interactive attractors / repellers."
 )
 
 sketch_path = pathlib.Path(__file__).parent / "sketch.js"
 sketch_js = sketch_path.read_text()
 
-P5_HTML = f"""
+P5_HTML = """
 <!DOCTYPE html>
 <html>
 <head>
@@ -22,8 +22,7 @@ P5_HTML = f"""
 </head>
 <body>
 <script>
-{sketch_js}
-new p5(sketch);
+""" + sketch_js + """
 </script>
 </body>
 </html>
