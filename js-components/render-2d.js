@@ -96,9 +96,23 @@ function onSeek() {
   }
 }
 
+function drawGrid(w, h, xDivs, yDivs) {
+  stroke(255, 255, 255, 20);
+  strokeWeight(1);
+  for (var i = 1; i < xDivs; i++) {
+    var x = (w / xDivs) * i;
+    line(x, 0, x, h);
+  }
+  for (var i = 1; i < yDivs; i++) {
+    var y = (h / yDivs) * i;
+    line(0, y, w, y);
+  }
+}
+
 function drawLatent(t) {
   var pts = D.li, n = pts.length;
   if (n < 2) return;
+  drawGrid(width, D.lh, 6, 5);
   var sx = width / D.cw;
   var prog = D.dur > 0 ? Math.min(t / D.dur, 1) : 0;
   var drawN = Math.max(Math.floor(prog * (n - 1)), 0);
@@ -131,6 +145,7 @@ function drawLatent(t) {
 function drawCentroid(t) {
   var pts = D.cp, n = pts.length;
   if (n < 2) return;
+  drawGrid(width, D.ct_h, 6, 5);
   var sx = width / D.cw;
   var h = D.ct_h;
   noStroke();
